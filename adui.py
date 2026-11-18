@@ -19,7 +19,9 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
+import unicodedata
 import urllib.request
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -723,8 +725,7 @@ def cmd_look(all_nodes=False, as_json=False, grep=None):
     print("screen %dx%d  当前应用 %s  可见元素 %d" % (w, h, pkg or "?", len(picked)))
     for i, n in enumerate(picked, 1):
         label = n["label"] or "-"
-        if len(label) > 34:
-            label = label[:33] + "…"
+        label = clip(label, 34)
         flags = []
         if n["clickable"]:
             flags.append("可点")
@@ -738,8 +739,8 @@ def cmd_look(all_nodes=False, as_json=False, grep=None):
             flags.append("密码")
         cx, cy = n["click_center"]
         extra = ("  " + n["id"][:34]) if n["id"] else ""
-        print("[%2d] %-34s (%4d,%4d) %-9s%s" % (
-            i, label, cx, cy, ",".join(flags), extra))
+        print("[%2d] %s (%4d,%4d) %s%s" % (
+            i, pad(label, 34), cx, cy, pad(",".join(flags), 9), extra))
     if not picked:
         print("（没有可见元素。可能是纯 Canvas/游戏画面，只能靠坐标盲点）")
     print("提示：tap N 直接点第 N 个；tap-text 文字 也行")
@@ -981,8 +982,116 @@ def cmd_dump():
 
 
 def cmd_ocr_help():
-    print("Android 上不需要 OCR：uiautomator 直接给出控件文字和坐标。")
-    print("用 look 就能拿到，比截图识别准得多。")
+    print("优先用 look：Android 有 uiautomator，控件文字和坐标是系统给的，比识别准。")
+    print("")
+    print("只有这两种情况才需要 OCR：")
+    print("  1) 纯 Canvas / 游戏 / Flutter 自绘界面，uiautomator 拿不到文字")
+    print("  2) 文字在图片里（聊天记录、商品图、验证码）")
+    print("")
+    print("用法：")
+    print("  python3 adui.py ocr               # 截屏 + 识别，输出「文字 (x,y)」")
+    print("  python3 adui.py ocr --json        # 给程序用")
+    print("  python3 adui.py ocr --keep a.png  # 顺便留下截图")
+    print("  python3 adui.py ocr --crop 0,300,1080,900   # 只认中间一条，快且准")
+    print("")
+    print("识别质量取决于 ocr.py：python3 ocr.py doctor 自检。")
+
+
+def find_ocr_py():
+    here = os.path.dirname(os.path.abspath(__file__))
+    cands = [os.path.join(here, "ocr.py"),
+             os.path.expanduser("~/work/ocr.py"),
+             os.path.expanduser("~/work-kit/ocr.py")]
+    for c in cands:
+        if os.path.exists(c):
+            return c
+    return None
+
+
+def dwidth(s):
+    """终端显示宽度：中文算两列，不然表格永远对不齐"""
+    return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in s)
+
+
+def pad(s, n):
+    return s + " " * max(0, n - dwidth(s))
+
+
+def clip(s, n):
+    if dwidth(s) <= n:
+        return s
+    out, w = "", 0
+    for c in s:
+        cw = 2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
+        if w + cw > n - 1:
+            break
+        out += c
+        w += cw
+    return out + "…"
+
+
+def cmd_ocr(crop=None, as_json=False, keep=None, minconf=None, psm=None, lang=None):
+    """截屏 → OCR → 输出带坐标的文字（给 tap x y 用）"""
+    require_device()
+    ocr_py = find_ocr_py()
+    if not ocr_py:
+        raise AdbError(
+            "找不到 ocr.py。它要和 adui.py 放在一起：\n"
+            "  cd ~/work && curl -fL -O https://ghfast.top/https://raw.githubusercontent.com/"
+            "dengxiancao/android-agent-kit/main/ocr.py\n"
+            "  python3 ocr.py doctor")
+
+    path = keep or os.path.join(tempfile.gettempdir(), "adui_ocr.png")
+    rc, raw, err = adb("exec-out", "screencap", "-p", binary=True, timeout=60)
+    if not raw.startswith(b"\x89PNG"):
+        raise AdbError("截图失败：%s" % (err.strip() or "返回的不是 PNG"))
+    with open(path, "wb") as f:
+        f.write(raw)
+
+    cmd = [sys.executable, ocr_py, path, "--json", "-q"]
+    if crop:
+        cmd += ["--crop", crop]
+    if minconf is not None:
+        cmd += ["--minconf", str(minconf)]
+    if psm is not None:
+        cmd += ["--psm", str(psm)]
+    if lang:
+        cmd += ["--lang", lang]
+
+    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
+    out = p.stdout.decode("utf-8", "replace").strip()
+    if p.returncode != 0 or not out.startswith("["):
+        raise AdbError("ocr.py 执行失败：%s" % (p.stderr.decode("utf-8", "replace").strip()[:400] or "无输出"))
+    try:
+        data = json.loads(out)
+    except ValueError:
+        raise AdbError("ocr.py 返回的不是合法 JSON：%s" % out[:200])
+
+    page = data[0] if data else {"lines": [], "size": [0, 0]}
+    lines = page.get("lines", [])
+
+    if as_json:
+        print(json.dumps({"screenshot": path, "size": page.get("size"),
+                          "model": page.get("model"),
+                          "lines": [{"i": i + 1, "text": L["text"], "box": L["box"],
+                                     "center": L["center"], "conf": L["conf"]}
+                                    for i, L in enumerate(lines)]},
+                         ensure_ascii=False, indent=1))
+        return
+
+    w, h = page.get("size") or [0, 0]
+    print("屏幕 %dx%d  OCR 识别到 %d 行（截图 %s）" % (w, h, len(lines), path))
+    if not lines:
+        print("（一个字符都没认出来。检查：python3 ocr.py doctor；"
+              "或这张图本来就没有文字）")
+        return
+    for i, L in enumerate(lines, 1):
+        cx, cy = L["center"]
+        print("[%2d] %s (%4d,%4d)  %3.0f" % (
+            i, pad(clip(L["text"], 34), 34), cx, cy, L["conf"]))
+    print("")
+    print("点击：python3 adui.py tap <x> <y>     例如 python3 adui.py tap %d %d"
+          % tuple(lines[0]["center"]))
 
 
 # ---------------------------------------------------------------- 入口
@@ -1019,6 +1128,13 @@ def main():
     sub.add_parser("ime-enable")
     p = sub.add_parser("ime-install"); p.add_argument("--apk")
     sub.add_parser("dump")
+    p = sub.add_parser("ocr", help="截屏 + 本地 OCR，输出可点击的文字坐标")
+    p.add_argument("--crop", default=None, help="只识别一块区域 x1,y1,x2,y2")
+    p.add_argument("--json", action="store_true", dest="as_json")
+    p.add_argument("--keep", default=None, help="保留截图到这个路径")
+    p.add_argument("--minconf", type=float, default=None)
+    p.add_argument("--psm", type=int, default=None)
+    p.add_argument("--lang", default=None)
     sub.add_parser("ocr-help")
 
     a = ap.parse_args()
@@ -1085,6 +1201,8 @@ def main():
             cmd_ime_install(a.apk)
         elif a.action == "dump":
             cmd_dump()
+        elif a.action == "ocr":
+            cmd_ocr(a.crop, a.as_json, a.keep, a.minconf, a.psm, a.lang)
         elif a.action == "ocr-help":
             cmd_ocr_help()
         return 0
