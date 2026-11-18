@@ -77,7 +77,7 @@ BASE=https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
 | `rev.py` | 28616 | 逆向侦察 | 手机 + 虚拟机 |
 | `webchat.py` | 36264 | 浏览器聊天界面 | 手机 + 虚拟机 |
 | `adui.py` | 47304 | 安卓控屏（含 doctor、ocr） | 手机 |
-| `ocr.py` | 33768 | 本地 OCR（图片/PDF → 文字+坐标） | 手机 + 虚拟机 |
+| `ocr.py` | 33777 | 本地 OCR（图片/PDF → 文字+坐标） | 手机 + 虚拟机 |
 | `ui.py` | 16329 | Linux 桌面控屏 | 虚拟机 |
 | `patch_ui.py` | 2708 | 把 ui 注入 agent.py | 虚拟机 |
 | `MANUAL.html` | — | 这份手册 | 手机 + 虚拟机 |
