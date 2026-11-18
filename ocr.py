@@ -854,7 +854,7 @@ def main():
     ap.add_argument("--psm", type=int, default=None,
                     help="版面模式，默认自适应（先 6 不够再 11）。单行文字可试 7")
     ap.add_argument("--scale", default="auto",
-                    help="放大倍数，默认按宽度自动（<800 用 2，<1400 用 1.5，否则 1）")
+                    help="放大倍数，默认按宽度自动（<640 用 2，<1000 用 1.5，1080 宽不放大）")
     ap.add_argument("--crop", default=None, help="只识别一块区域：x1,y1,x2,y2")
     ap.add_argument("--bin", dest="binarize", default="auto", choices=["auto", "on", "off"],
                     help="二值化，默认 auto（仅低对比时启用）")
