@@ -19,7 +19,8 @@
 ## 30 秒开始
 
 ```bash
-git clone https://github.com/dengxiancao/android-agent-kit ~/work-kit
+# 国内直连 github.com 常超时，走镜像前缀（原地址整段接在后面）
+git clone https://ghfast.top/https://github.com/dengxiancao/android-agent-kit ~/work-kit
 cd ~/work-kit
 python3 webchat.py --mock        # 不用 API key，先看界面能不能起来
 ```
@@ -33,7 +34,7 @@ python3 webchat.py --port 8080
 
 浏览器打开 `http://127.0.0.1:8080`。
 
-> 完整流程（Termux 环境、API 配置、ADB 无线调试配对、中文输入、保活、开机自启）见手册，
+> 完整流程（Termux 环境、API 配置、ADB 无线调试配对、中文输入、保活、开机自启、断线补救）见手册，
 > 里面每一步都有预期输出和失败对照表。**建议先读手册再动手**，尤其是 ADB 那一节。
 >
 > 在线看：<https://dengxiancao.github.io/android-agent-kit/MANUAL.html> （手机浏览器直接打开，排版自适应）
@@ -41,6 +42,7 @@ python3 webchat.py --port 8080
 ## 手机控屏速查
 
 ```bash
+python3 adui.py doctor        # 断了/连不上：自动重启 adb 服务 + 扫端口 + 连接
 python3 adui.py scan          # 扫无线调试端口并自动连接（Termux 的 adb 没有 mDNS，只能扫）
 python3 adui.py info          # 确认设备 / 分辨率 / 前台应用
 python3 adui.py look          # 看屏幕上有哪些文字和按钮，带序号
