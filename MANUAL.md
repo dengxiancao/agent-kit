@@ -4,7 +4,7 @@
 
 **2026.11.18** · 适用于 Termux（Android 11+）与 Alpine Linux 虚拟机
 
-这套东西的目标：在手机上跑一个**能真正动手**的 AI——聊天、执行命令、分析 APK、操控手机屏幕。六个文件，两块环境，彼此独立，坏一个不影响其他。
+这套东西的目标：在手机上跑一个**能真正动手**的 AI——聊天、执行命令、分析 APK、操控手机屏幕。七个文件，两块环境，彼此独立，坏一个不影响其他。
 
 
 ## 零、先看这张图
@@ -17,6 +17,7 @@
 | `webchat.py` | 手机 + 虚拟机 | ——（图形界面） | http.server + 内嵌页面 |
 | `rev.py` | 手机 + 虚拟机 | 文件（APK/ELF/PE） | 纯标准库二进制解析 |
 | `adui.py` | **手机** | **安卓屏幕** | ADB + uiautomator |
+| `ocr.py` | 手机 + 虚拟机 | 图片/PDF 里的字 | Tesseract 5 |
 | `ui.py` | **虚拟机** | **X11 桌面** | xdotool + 截图 OCR |
 | `patch_ui.py` | 虚拟机 | ——（补丁脚本） | 改 agent.py 加工具 |
 
@@ -75,7 +76,8 @@ BASE=https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
 |---|---|---|---|
 | `rev.py` | 28616 | 逆向侦察 | 手机 + 虚拟机 |
 | `webchat.py` | 35945 | 浏览器聊天界面 | 手机 + 虚拟机 |
-| `adui.py` | 42526 | 安卓控屏（含 doctor） | 手机 |
+| `adui.py` | 47304 | 安卓控屏（含 doctor、ocr） | 手机 |
+| `ocr.py` | 33768 | 本地 OCR（图片/PDF → 文字+坐标） | 手机 + 虚拟机 |
 | `ui.py` | 16329 | Linux 桌面控屏 | 虚拟机 |
 | `patch_ui.py` | 2708 | 把 ui 注入 agent.py | 虚拟机 |
 | `MANUAL.html` | — | 这份手册 | 手机 + 虚拟机 |
@@ -83,7 +85,7 @@ BASE=https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
 下完校验大小，对不上就是没下完：
 
 ```
-wc -c rev.py webchat.py adui.py
+wc -c rev.py webchat.py adui.py ocr.py
 ```
 
 手机上看这份手册不用下载，直接开在线版：https://dengxiancao.github.io/android-agent-kit/MANUAL.html
@@ -140,7 +142,7 @@ termux-wake-lock
 
 ### 2.2 下载与校验
 
-见第一章。手机端只需要 `rev.py`、`webchat.py`、`adui.py` 三个。
+见第一章。手机端需要 `rev.py`、`webchat.py`、`adui.py`、`ocr.py` 四个；不装 OCR 也能控屏，只是遇到自绘界面就没辙。
 
 
 ### 2.3 启动
@@ -457,7 +459,128 @@ python3 ui.py win activate chromium
 ```
 
 
-### 4.4 对 agent 说的原话
+### 4.4 OCR 识别（ocr.py）
+
+`look` 读的是控件自报的文字。遇到这几种就没辙：游戏和 Flutter 自绘界面、聊天记录截图、商品图上的文字、验证码、PDF。这时候才需要 OCR。
+
+**为什么是 Tesseract**：PaddleOCR / RapidOCR / EasyOCR 全都依赖 onnxruntime 或 torch，这两个在 Android Bionic aarch64 上没有预编译 wheel，Termux 里根本装不上。Tesseract 是官方仓库里唯一能 `pkg install` 的成熟方案。
+
+**装（手机）**：
+
+```
+pkg install -y tesseract python-pillow poppler
+cd $PREFIX/share/tessdata
+B=https://ghfast.top/https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main
+curl -fL -O $B/chi_sim.traineddata
+curl -fL -O $B/chi_sim_vert.traineddata
+curl -fL -O $B/eng.traineddata
+chmod 644 *.traineddata
+tesseract --list-langs          # 要看到 chi_sim
+```
+
+`chi_sim_vert` 看着多余，但少了它会一直报 `Failed loading language 'chi_sim_vert'`。
+
+**自检**：
+
+```
+python3 ocr.py doctor
+```
+
+```
+ocr.py 自检
+----------------------------------------------------
+tesseract : OK  5.5.0  (/data/data/com.termux/files/usr/bin/tesseract)
+语言包    : chi_sim, eng, osd
+中文      : OK
+模型目录  : /data/data/com.termux/files/usr/share/tessdata/
+中文模型  : chi_sim.traineddata  2.4 MB
+Pillow    : OK  10.2.0  (JPEG/WebP/自动旋转)
+pdftoppm  : OK  (PDF 输入)
+----------------------------------------------------
+可以用了：python3 ocr.py 截图.png
+```
+
+**四个用法覆盖全部场景**：
+
+| 命令 | 用途 |
+|---|---|
+| `python3 ocr.py shot.png` | 纯文本，一行一句 |
+| `python3 ocr.py shot.png --boxes` | 带坐标，能直接点 |
+| `python3 ocr.py shot.png --json` | 给程序 / agent 用 |
+| `python3 ocr.py doc.pdf --dpi 200` | PDF 逐页 |
+
+```
+$ python3 ocr.py shot.png --boxes
+   42,   44   180x44     91.1  无线调试
+   40,  120   304x32     95.2  使用配对码配对设备
+   42,  178   445x27     92.5  IP地址和端口192.168.1.102:39549
+   42,  240   166x32     96.6  已连接设备
+```
+
+坐标是**原图坐标**（哪怕内部放大过、裁剪过，也都换算回来了），可以直接喂给 `adui.py tap x y`。
+
+**和 adui 连起来**——截屏、识别、点击，一条命令：
+
+```
+python3 adui.py ocr                          # 截屏 + OCR，输出「文字 (x,y)」
+python3 adui.py ocr --crop 0,300,1080,900    # 只认中间一条，快且准
+python3 adui.py ocr --keep a.png             # 顺便留截图
+python3 adui.py ocr --json                   # 给 agent 解析
+```
+
+```
+屏幕 1080x2340  OCR 识别到 6 行（截图 /tmp/adui_ocr.png）
+[ 1] 无线调试                           ( 540,  120)   93
+[ 2] 使用配对码配对设备                 ( 540,  310)   95
+[ 3] IP地址和端口192.168.1.102:39549    ( 540,  430)   92
+[ 4] 取消配对                           ( 540, 1800)   96
+
+点击：python3 adui.py tap <x> <y>     例如 python3 adui.py tap 540 120
+```
+
+**实测效果**（1080×2400 合成截图，最差的那种：小字、深色模式、彩色气泡混在一起）：
+
+| 场景 | 结果 |
+|---|---|
+| 白底黑字 UI | 8 行全对 |
+| 深色模式 | 5 行全对（自动反色） |
+| 低对比灰字 | 5 行全对（自动拉伸对比度） |
+| 微信绿气泡 | 10 条消息全出，个别字有错 |
+| 12px 小字 | 能认，但建议 `--crop` 出那一块单独识别 |
+
+**两个真实的坑**，代码里已经处理，但你得知道为什么，出问题时才不慌：
+
+**坑一：彩色气泡整段消失。** 微信绿气泡在灰度图里是 236，和白底 255 只差 19，可 tesseract 的版面分析会把这块颜色判成「图片区域」整块跳过——那些消息不是认错了，是根本没进识别。解法是把灰度换成 max(R,G,B)：绿色通道顶到 236≈白，色块消失，里面的黑字留下。`ocr.py` 检测到彩色像素超过 4% 会自动切换，不用你管。
+
+**坑二：放大不等于更准。** 最初我给 1080 宽的截图放大 1.5 倍，结果比不放大还差：tesseract 对整幅图做行分割，放大后行高与字高比例变了，反而把行切碎。现在的规则是宽度 ≥1000 不放大，640–1000 放大 1.5 倍，更小的放大 2 倍。小字要放大就用 `--crop` 只截那一块，别整图放大。
+
+**fast 还是 best 模型**：
+
+| 模型 | 大小 | 特点 |
+|---|---|---|
+| fast（默认） | 2.4 MB | 快，多数截图够用；个别界面词会整行漏掉 |
+| best | 13 MB | 慢约 2 倍，漏行明显少；但个别字反而更容易错 |
+
+差异很具体：同一张深色设置页，fast 把「无线调试」整行丢了，best 认得出来；换一张白底聊天图，best 丢了「这么强，」三个字，fast 倒认对了。**没有绝对赢家——漏行了就换另一个试。**
+
+装 best（放进 `~/.tessdata` 就自动优先使用，不用每次带参数）：
+
+```
+mkdir -p ~/.tessdata && cd ~/.tessdata
+B=https://ghfast.top/https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/main
+curl -fL -O $B/chi_sim.traineddata
+curl -fL -O $B/eng.traineddata
+chmod 644 *.traineddata
+
+python3 ~/work/ocr.py shot.png      # 自动用 ~/.tessdata
+```
+
+> 要指定别的目录用 `--tessdata /path`，或设环境变量 `OCR_TESSDATA`。`doctor` 会打印当前到底用的哪个模型。
+
+**什么时候别用 OCR**：界面能用 `look` 就用 `look`。uiautomator 拿到的是控件自报的文字，100% 准确、零延迟；OCR 是猜，永远有错字。它只用来兜底。
+
+
+### 4.5 对 agent 说的原话
 
 直接复制这几句，比自己摸索快得多。
 
@@ -497,6 +620,9 @@ python3 ui.py win activate chromium
 | 启动终端版 | `python3 agent.py` |
 | 连接手机 | `python3 adui.py scan`（自动找端口并连接） |
 | 手机断了 / 连不上 | `python3 adui.py doctor`（自动排查并修复） |
+| 识别屏幕文字 | `python3 adui.py ocr`（截图 + OCR + 坐标） |
+| 识别图片 / PDF | `python3 ocr.py 文件` |
+| OCR 自检 | `python3 ocr.py doctor` |
 | 看是否连上 | `adb devices` |
 | 断开 | `adb disconnect` |
 | 看手机屏幕 | `python3 adui.py look` |
@@ -537,6 +663,9 @@ python3 ui.py win activate chromium
 | `rev.py` 报 Permission denied | 文件在被保护目录 | `cp` 到 `~/work` 再分析 |
 | `write_file → path escapes work dir` | 路径护栏拦住了越界写入 | 改用 `run_shell` 配合 `tee` 写 |
 | agent 12 轮就停 | `MAX_TURNS` 默认 12 | `export AGENT_MAX_TURNS=60` 写进 `.bashrc` |
+| OCR 一个字都认不出 | tesseract 或中文包没装 | `python3 ocr.py doctor` |
+| OCR 整段文字消失 | 彩色背景被当成图片区域 | 已自动处理；仍丢就换 best 模型 |
+| OCR 小字认不准 | 整图放大反而更差 | `--crop` 只截那一块再识别 |
 
 
 ### 6.2 无线调试断了怎么救
