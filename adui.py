@@ -615,7 +615,11 @@ def cmd_scan(host=None, start=30000, end=65535, timeout=0.3, do_connect=True):
 
         print("")
         for p in found[:3]:
-            blob, ok = _try_connect(t, p, timeout=6)
+            try:
+                blob, ok = _try_connect(t, p, timeout=6)
+            except AdbError as e:
+                print("  %s:%d  -> 无响应，跳过（%s）" % (t, p, str(e).splitlines()[0]))
+                continue
             if ok:
                 print("  %s:%d  -> 连接成功" % (t, p))
                 time.sleep(0.6)
@@ -628,8 +632,7 @@ def cmd_scan(host=None, start=30000, end=65535, timeout=0.3, do_connect=True):
                 except AdbError:
                     print("  但设备还没就绪，再等一下或重跑一次 scan")
             else:
-                mark = "（配对端口，需要配密码才通）" if "failed" in blob.lower() else ""
-                print("  %s:%d  -> %s %s" % (t, p, blob.splitlines()[-1][:80], mark))
+                print("  %s:%d  -> %s" % (t, p, blob.splitlines()[-1][:80]))
 
     raise AdbError(
         "没扫到能连的调试端口。逐个排查：\n"
@@ -638,6 +641,65 @@ def cmd_scan(host=None, start=30000, end=65535, timeout=0.3, do_connect=True):
         "       python3 adui.py pair 127.0.0.1 <弹窗里的端口> <6位码>\n"
         "  3) MIUI/澎湃 可能限制后台，把 Termux 加到「无限制」再试\n"
         "  4) 端口被系统改了的话，范围放大：python3 adui.py scan --range 10000-65535")
+
+
+def device_states():
+    """{serial: state} ，state 是 device / offline / unauthorized"""
+    rc, out, err = adb("devices", timeout=20)
+    d = {}
+    for line in out.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 2:
+            d[parts[0]] = parts[1]
+    return d
+
+
+def cmd_doctor():
+    """断了以后的一键排查：能自动修的自己修，修不了的告诉你去点哪里"""
+    print("① 检查 adb")
+    rc, out, err = adb("version", timeout=10)
+    first = out.strip().splitlines()[0] if out.strip() else (err.strip()[:80] or "无输出")
+    print("   %s" % first)
+
+    print("② 看当前设备")
+    st = device_states()
+    ok = [k for k, v in st.items() if v == "device"]
+    if ok:
+        print("   已连接：%s" % ", ".join(ok))
+        print("   不用修。确认能用：python3 adui.py info")
+        return
+    if not st:
+        print("   一个设备都没有")
+    for k, v in st.items():
+        print("   %s -> %s" % (k, v))
+    if "unauthorized" in st.values():
+        print("   unauthorized = 手机上「允许 USB 调试吗」没点同意，或者授权被撤销了")
+        print("   去 无线调试 页面「撤销 USB 调试授权」，然后重新 pair 一次")
+
+    print("③ 重启本地 adb 服务（一半的假死是它）")
+    adb("kill-server", timeout=15)
+    time.sleep(1)
+    adb("start-server", timeout=40)
+    print("   done")
+
+    print("④ 扫端口并连接")
+    try:
+        cmd_scan()
+        return
+    except AdbError as e:
+        print("")
+        for ln in str(e).splitlines():
+            print("   " + ln)
+        print("")
+
+    print("")
+    print("⑤ 以上都不行，只剩两种可能：")
+    print("   1) 配对记录丢了 → 点「使用配对码配对设备」，30 秒内")
+    print("      python3 adui.py pair 127.0.0.1 <弹窗端口> <6位码>")
+    print("   2) 系统把无线调试整个禁了 → USB 接电脑 adb tcpip 5555，")
+    print("      再 python3 adui.py connect 127.0.0.1:5555")
+    print("")
+    raise AdbError("没修好，见上面 ⑤。")
 
 
 def cmd_look(all_nodes=False, as_json=False, grep=None):
@@ -933,6 +995,7 @@ def main():
     p = sub.add_parser("pair"); p.add_argument("a"); p.add_argument("b", nargs="?")
     p.add_argument("c", nargs="?")
     sub.add_parser("ports")
+    sub.add_parser("doctor", help="断了/连不上时的一键排查")
     p = sub.add_parser("scan", help="扫描无线调试端口（mDNS 不可用时的替代）")
     p.add_argument("--host", help="要扫的地址，默认先扫 127.0.0.1")
     p.add_argument("--range", dest="rng", default="30000-65535", help="端口范围，默认 30000-65535")
@@ -976,6 +1039,8 @@ def main():
                 cmd_pair(a.a, a.b, a.c)
         elif a.action == "ports":
             cmd_ports()
+        elif a.action == "doctor":
+            cmd_doctor()
         elif a.action == "scan":
             m = re.match(r"^\s*(\d+)\s*-\s*(\d+)\s*$", a.rng or "")
             if not m:
