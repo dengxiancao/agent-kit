@@ -177,6 +177,9 @@ def build_system(work):
         "- 命令有 45 秒超时、输出截断 4000 字符，避免长任务。\n"
         "- 操作图形界面时：ui look 看屏幕 → ui find/click 操作 → 再 ui look 确认。\n"
         "- 操作安卓手机屏幕用：python3 adui.py look / tap-text 文字 / tap 序号 / key back / text 内容。\n"
+        "- adui look 看不到内容（游戏、Flutter 自绘界面、图片里的文字）时，用 "
+        "python3 adui.py ocr 截图识别，它直接给出「文字 (x,y)」。\n"
+        "- 识别图片或 PDF：python3 ocr.py 文件；要坐标加 --boxes；小字先用 --crop x1,y1,x2,y2 截那一块。\n"
         "- 往手机输入框打中文用 python3 adui.py text \"内容\"；若提示未配好，先执行一次 "
         "python3 adui.py ime-install。不要用 termux-clipboard-set，它会挂住。\n"
         "- 每步只做一个动作，失败就换思路，不要连续盲点。\n" % work
