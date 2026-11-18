@@ -45,21 +45,27 @@ cd ~/work-kit && git pull
 git config --global url."https://ghfast.top/https://github.com/".insteadOf "https://github.com/"
 ```
 
-**方式 B：单文件（jsDelivr CDN）**
+**方式 B：单文件（镜像 raw）**
 
-只要一两个文件时用这个。jsDelivr 在国内有节点，比 raw 稳定得多：
+只要一两个文件时用这个。前缀和方式 A 是同一个镜像，只是后面的地址不同：
 
 ```
-BASE=https://cdn.jsdelivr.net/gh/dengxiancao/android-agent-kit@main
+BASE=https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
 cd ~/work
 curl -fL -o adui.py.part $BASE/adui.py && mv adui.py.part adui.py
 ```
 
 > ⚠️ **别用 `wget -O 目标文件`。** 下载失败时它会先把目标文件清空，留下 0 字节的残骸，把原来能用的版本一起毁掉（这个坑踩一次就够）。`curl -f` 遇到非 2xx 直接失败、不落盘；先写 `.part` 再 `mv`，半截文件永远覆盖不了好文件。
 
-**方式 C：raw 直连（备用）**
+**方式 C：备用入口**
 
-`raw.githubusercontent.com` 在部分网络下会报 `Read error (Connection timed out) in headers` —— 域名能解析、TCP 也连得上，但响应被中途掐断。**这种断法改 DNS 没用**，换 A 或 B。
+jsDelivr 有国内 CDN，通常是三者里最快的，但**内容会缓存几个小时**——刚更新的版本可能还是旧的，拿新版别用它：
+
+```
+BASE=https://cdn.jsdelivr.net/gh/dengxiancao/android-agent-kit@main
+```
+
+`raw.githubusercontent.com` 直连在部分网络下会报 `Read error (Connection timed out) in headers` —— 域名能解析、TCP 也连得上，但响应被中途掐断。**这种断法改 DNS 没用**：
 
 ```
 BASE=https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
