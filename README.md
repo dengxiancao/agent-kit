@@ -33,8 +33,10 @@ python3 webchat.py --port 8080
 
 浏览器打开 `http://127.0.0.1:8080`。
 
-> 完整流程（Termux 环境、API 配置、ADB 无线调试配对、中文输入、保活、开机自启）见 `MANUAL.html`，
+> 完整流程（Termux 环境、API 配置、ADB 无线调试配对、中文输入、保活、开机自启）见手册，
 > 里面每一步都有预期输出和失败对照表。**建议先读手册再动手**，尤其是 ADB 那一节。
+>
+> 在线看：<https://dengxiancao.github.io/android-agent-kit/MANUAL.html> （手机浏览器直接打开，排版自适应）
 
 ## 手机控屏速查
 
