@@ -71,6 +71,8 @@ wc -c rev.py webchat.py ui.py patch_ui.py
   2708 patch_ui.py
 ```
 
+手机上看这份手册，不用下载，直接打开在线版：https://dengxiancao.github.io/android-agent-kit/MANUAL.html
+
 懒得一个个下，直接整仓克隆（Termux 里要先 `pkg install git`）：
 
 ```
