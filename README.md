@@ -1,2 +1,61 @@
-# android-agent-kit
-Termux/安卓 上的 agent 工具集：聊天界面、逆向侦察、ADB 控屏、桌面控屏
+# 手机 Agent 工具集
+
+在 **Termux（安卓手机）** 和 **Linux 虚拟机** 上跑一个自己的 agent：能聊天、能读代码、能逆向看包，也能直接操作屏幕。
+
+全部脚本只用 Python 标准库，装好 Python 就能跑，不需要 pip install。
+
+## 文件
+
+| 文件 | 干什么 | 跑在哪 |
+|---|---|---|
+| `webchat.py` | 浏览器里的聊天界面，流式输出 + 工具调用卡片 | 手机 / 虚拟机 |
+| `rev.py` | 逆向侦察：ELF / PE / DEX / APK 结构、字符串、熵、carve | 手机 / 虚拟机 |
+| `adui.py` | 安卓控屏：adb + uiautomator，看屏幕、点按钮、输中文 | 手机 |
+| `ui.py` | Linux 桌面控屏：xdotool + OCR | 虚拟机 |
+| `patch_ui.py` | 把 `ui` 工具注入已有的 `agent.py` | 虚拟机 |
+| `MANUAL.html` | 完整部署手册（单文件，手机浏览器直接打开） | — |
+| `MANUAL.md` | 同一份手册的 Markdown 版 | — |
+
+## 30 秒开始
+
+```bash
+git clone https://github.com/dengxiancao/android-agent-kit ~/work-kit
+cd ~/work-kit
+python3 webchat.py --mock        # 不用 API key，先看界面能不能起来
+```
+
+真实使用：
+
+```bash
+export OPENAI_API_KEY=sk-xxx      # 或你自己的 endpoint
+python3 webchat.py --port 8080
+```
+
+浏览器打开 `http://127.0.0.1:8080`。
+
+> 完整流程（Termux 环境、API 配置、ADB 无线调试配对、中文输入、保活、开机自启）见 `MANUAL.html`，
+> 里面每一步都有预期输出和失败对照表。**建议先读手册再动手**，尤其是 ADB 那一节。
+
+## 手机控屏速查
+
+```bash
+python3 adui.py scan          # 扫无线调试端口并自动连接（Termux 的 adb 没有 mDNS，只能扫）
+python3 adui.py info          # 确认设备 / 分辨率 / 前台应用
+python3 adui.py look          # 看屏幕上有哪些文字和按钮，带序号
+python3 adui.py tap-text 设置  # 点文字
+python3 adui.py text "你好"    # 输入中文（需先 ime-install）
+python3 adui.py key back
+```
+
+## 安全边界
+
+这些脚本的能力是「替你操作机器」，风险也是真的：
+
+- `adui.py` 拥有 adb shell 权限，能点任何按钮、读任何界面 —— 包括支付确认页。
+- `webchat.py --host 0.0.0.0` 会把命令执行权开给同一网段的任何设备。
+- `termux-setup-storage` 会把整个 `/sdcard` 暴露给脚本。
+- 不要把 `OPENAI_API_KEY` 提交进仓库，也不要贴到聊天里。
+
+## 许可
+
+未附许可协议，代码归作者所有。要复用请先联系。
