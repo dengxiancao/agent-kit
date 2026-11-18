@@ -3,6 +3,7 @@
 在 **Termux（安卓手机）** 和 **Linux 虚拟机** 上跑一个自己的 agent：能聊天、能读代码、能逆向看包，也能直接操作屏幕。
 
 全部脚本只用 Python 标准库，装好 Python 就能跑，不需要 pip install。
+OCR 依赖系统的 Tesseract（`pkg install tesseract`），Pillow 可选。
 
 ## 文件
 
@@ -10,7 +11,8 @@
 |---|---|---|
 | `webchat.py` | 浏览器里的聊天界面，流式输出 + 工具调用卡片 | 手机 / 虚拟机 |
 | `rev.py` | 逆向侦察：ELF / PE / DEX / APK 结构、字符串、熵、carve | 手机 / 虚拟机 |
-| `adui.py` | 安卓控屏：adb + uiautomator，看屏幕、点按钮、输中文 | 手机 |
+| `adui.py` | 安卓控屏：adb + uiautomator，看屏幕、点按钮、输中文、截屏 OCR | 手机 |
+| `ocr.py` | 本地 OCR：图片 / PDF → 文字 + 坐标，彩色背景和深色模式都能认 | 手机 / 虚拟机 |
 | `ui.py` | Linux 桌面控屏：xdotool + OCR | 虚拟机 |
 | `patch_ui.py` | 把 `ui` 工具注入已有的 `agent.py` | 虚拟机 |
 | `MANUAL.html` | 完整部署手册（单文件，手机浏览器直接打开） | — |
@@ -50,6 +52,21 @@ python3 adui.py tap-text 设置  # 点文字
 python3 adui.py text "你好"    # 输入中文（需先 ime-install）
 python3 adui.py key back
 ```
+
+## OCR
+
+`look` 读的是控件文字，遇到 Canvas / 游戏 / 图片里的字就没了。这时用 `ocr.py`：
+
+```bash
+pkg install -y tesseract python-pillow poppler   # Termux
+python3 ocr.py doctor                            # 自检，会告诉你缺什么、怎么装
+python3 ocr.py shot.png                          # 纯文本
+python3 ocr.py shot.png --boxes                  # 带坐标，能直接点
+python3 adui.py ocr                              # 截屏 + 识别 + 给出可点坐标
+```
+
+彩色背景（微信绿气泡）默认会被 tesseract 当成图片整块跳过，`ocr.py` 会自动改用 max(R,G,B)
+灰度规避；深色模式自动反色；1080 宽的截图默认不放大（放大反而更差）。
 
 ## 安全边界
 
