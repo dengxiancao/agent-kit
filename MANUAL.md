@@ -25,61 +25,64 @@
 
 ## 一、文件清单
 
-全部文件都在仓库 github.com/dengxiancao/android-agent-kit 的根目录，下面的 raw 链接可以直接 wget，也可以直接 git clone。
+所有文件都在仓库 github.com/dengxiancao/android-agent-kit。下载有三种方式，按你的网络选一种就行。
 
-| 文件 | 字节数 | raw 路径 | 装在哪 |
-|---|---|---|---|
-| `rev.py` | 28616 | `/main/rev.py` | 手机 + 虚拟机 |
-| `webchat.py` | 35945 | `/main/webchat.py` | 手机 + 虚拟机 |
-| `adui.py` | 40248 | `/main/adui.py` | 手机 |
-| `ui.py` | 16329 | `/main/ui.py` | 虚拟机 |
-| `patch_ui.py` | 2708 | `/main/patch_ui.py` | 虚拟机 |
-| `MANUAL.html` | — | `/main/MANUAL.html` | 这份手册 |
+**方式 A：整仓克隆（推荐，墙内可用）**
 
-前缀统一是 `https://raw.githubusercontent.com/dengxiancao/android-agent-kit`，表里只写后半段，免得撑破屏幕。**大小不对就是没下完，重下即可。**
+```
+git clone --depth 1 https://ghfast.top/https://github.com/dengxiancao/android-agent-kit ~/work-kit
+```
 
-**手机端：下载三个**
+`ghfast.top/` 是 GitHub 的镜像前缀，原地址整段接在后面即可。以后更新：
+
+```
+cd ~/work-kit && git pull
+```
+
+不想每次手写前缀，配一次全局替换，之后 git 命令照原样敲：
+
+```
+git config --global url."https://ghfast.top/https://github.com/".insteadOf "https://github.com/"
+```
+
+**方式 B：单文件（jsDelivr CDN）**
+
+只要一两个文件时用这个。jsDelivr 在国内有节点，比 raw 稳定得多：
+
+```
+BASE=https://cdn.jsdelivr.net/gh/dengxiancao/android-agent-kit@main
+cd ~/work
+curl -fL -o adui.py.part $BASE/adui.py && mv adui.py.part adui.py
+```
+
+> ⚠️ **别用 `wget -O 目标文件`。** 下载失败时它会先把目标文件清空，留下 0 字节的残骸，把原来能用的版本一起毁掉（这个坑踩一次就够）。`curl -f` 遇到非 2xx 直接失败、不落盘；先写 `.part` 再 `mv`，半截文件永远覆盖不了好文件。
+
+**方式 C：raw 直连（备用）**
+
+`raw.githubusercontent.com` 在部分网络下会报 `Read error (Connection timed out) in headers` —— 域名能解析、TCP 也连得上，但响应被中途掐断。**这种断法改 DNS 没用**，换 A 或 B。
 
 ```
 BASE=https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
-cd ~/work
-wget -O rev.py     $BASE/rev.py
-wget -O webchat.py $BASE/webchat.py
-wget -O adui.py    $BASE/adui.py
+```
+
+| 文件 | 字节数 | 干什么 | 装在哪 |
+|---|---|---|---|
+| `rev.py` | 28616 | 逆向侦察 | 手机 + 虚拟机 |
+| `webchat.py` | 35945 | 浏览器聊天界面 | 手机 + 虚拟机 |
+| `adui.py` | 42526 | 安卓控屏（含 doctor） | 手机 |
+| `ui.py` | 16329 | Linux 桌面控屏 | 虚拟机 |
+| `patch_ui.py` | 2708 | 把 ui 注入 agent.py | 虚拟机 |
+| `MANUAL.html` | — | 这份手册 | 手机 + 虚拟机 |
+
+下完校验大小，对不上就是没下完：
+
+```
 wc -c rev.py webchat.py adui.py
 ```
 
-**虚拟机端：下载四个**
+手机上看这份手册不用下载，直接开在线版：https://dengxiancao.github.io/android-agent-kit/MANUAL.html
 
-```
-BASE=https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
-cd ~/work
-wget -O rev.py      $BASE/rev.py
-wget -O webchat.py  $BASE/webchat.py
-wget -O ui.py       $BASE/ui.py
-wget -O patch_ui.py $BASE/patch_ui.py
-wc -c rev.py webchat.py ui.py patch_ui.py
-```
-
-预期输出（顺序对应上面）：
-
-```
- 28616 rev.py
- 35945 webchat.py
- 40248 adui.py
- 16329 ui.py
-  2708 patch_ui.py
-```
-
-手机上看这份手册，不用下载，直接打开在线版：https://dengxiancao.github.io/android-agent-kit/MANUAL.html
-
-懒得一个个下，直接整仓克隆（Termux 里要先 `pkg install git`）：
-
-```
-git clone https://github.com/dengxiancao/android-agent-kit ~/work-kit
-```
-
-> 仓库是**长期地址**，不会再像临时粘贴站那样过期。改完代码 `git commit` 回自己的仓库，换手机也不用重找链接。
+> 仓库是长期地址，不会像临时粘贴站那样过期。改完代码 `git commit` 回自己仓库，换手机也不用重找链接。
 
 仍然建议定期备份：`tar czf ~/backup.tgz ~/work`。
 
@@ -487,6 +490,7 @@ python3 ui.py win activate chromium
 | 换端口 | `python3 webchat.py --port 8800` |
 | 启动终端版 | `python3 agent.py` |
 | 连接手机 | `python3 adui.py scan`（自动找端口并连接） |
+| 手机断了 / 连不上 | `python3 adui.py doctor`（自动排查并修复） |
 | 看是否连上 | `adb devices` |
 | 断开 | `adb disconnect` |
 | 看手机屏幕 | `python3 adui.py look` |
@@ -498,6 +502,9 @@ python3 ui.py win activate chromium
 
 ## 六、故障排查
 
+
+### 6.1 常见症状对照表
+
 按症状查，不用从头读。
 
 | 症状 | 原因 | 解决 |
@@ -505,7 +512,9 @@ python3 ui.py win activate chromium
 | `No command Python3 found` | Linux 区分大小写，`P` 不能大写 | 改成 `python3` |
 | `Address already in use` | 端口被占 | `--port 8800` 换一个 |
 | 浏览器「连接失败」 | 后端进程被系统杀了 | 回 Termux 重启；先 `termux-wake-lock` |
-| `adb devices` 列表空 | 没 connect，或无线调试关了 | 重新打开无线调试 → `adb connect` |
+| `adb devices` 列表空 | 没 connect，或无线调试关了 | `python3 adui.py doctor` |
+| `adb devices` 显示 `offline` | 本地 adb 服务状态脏了 | `adb kill-server` → `python3 adui.py scan` |
+| 下载卡在 `Read error (Connection timed out)` | `raw.githubusercontent.com` 被拦 | 换 jsDelivr 或 ghfast 镜像（见第一章） |
 | `unauthorized` | 手机上没点「允许」 | 看通知栏，点允许；不行就撤销授权重配对 |
 | `protocol fault (couldn't read status message)` | **配对端口用错**，或端口已超时（2 分钟） | 分屏操作，用弹窗里那个端口，30 秒内完成 |
 | `failed to connect` / `Connection refused` | 端口已失效（开关无线调试、开配对弹窗都会换端口） | `python3 adui.py scan` |
@@ -522,6 +531,46 @@ python3 ui.py win activate chromium
 | `rev.py` 报 Permission denied | 文件在被保护目录 | `cp` 到 `~/work` 再分析 |
 | `write_file → path escapes work dir` | 路径护栏拦住了越界写入 | 改用 `run_shell` 配合 `tee` 写 |
 | agent 12 轮就停 | `MAX_TURNS` 默认 12 | `export AGENT_MAX_TURNS=60` 写进 `.bashrc` |
+
+
+### 6.2 无线调试断了怎么救
+
+90% 的「连不上」只是端口变了，配对记录还在。按下面的顺序来，从便宜到贵，通常第 1 步就结束。
+
+**① 一条命令先试**
+
+```
+cd ~/work && python3 adui.py doctor
+```
+
+它依次做四件事：查 adb 版本 → 看设备状态（含 `offline` / `unauthorized`）→ 重启本地 adb 服务 → 扫端口并连接。能自己修的当场修好；修不了会直接打印下一步该点哪里。
+
+**② 关一次再开「无线调试」**
+
+设置 → 开发者选项 → 无线调试，关掉再打开。端口会换新的，**配对记录不会掉**。然后重跑 `doctor`。
+
+**③ 重新配对（只有配对记录丢了才需要）**
+
+点「使用配对码配对设备」，趁弹窗开着，30 秒内执行：
+
+```
+python3 adui.py pair 127.0.0.1 <弹窗端口> <6位码>
+```
+
+配对成功会自动接着扫端口并连上，不用再抄主页面端口。
+
+**④ 兜底：USB 线接电脑**
+
+```
+adb devices          # 电脑上能认到手机
+adb tcpip 5555
+# 拔线，回手机执行
+python3 adui.py connect 127.0.0.1:5555
+```
+
+> **什么时候必须重新配对**：撤销过 USB 调试授权、恢复出厂、清除「设置」数据、在无线调试里点过「取消配对」。**哪些不需要**：重启手机、开关无线调试、换 WiFi、飞行模式、换 IP —— 配对密钥在 /data/misc/adb/adb_keys，跟网络无关。
+
+顺带一个天然优势：Termux 和 adbd 跑在同一台手机上，走的是 `127.0.0.1`。所以路由器换 IP、换 WiFi、连热点全都不影响，真正会变的只有端口号 —— 这就是「断了先 scan / 先 doctor」的原因。
 
 
 ## 七、每天开机后的三分钟
