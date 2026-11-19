@@ -4,9 +4,14 @@
 webchat.py - 给 agent 加一个本地图形界面（单文件，纯标准库）
 
 用法:
-  export DEEPSEEK_KEY=sk-xxxx
-  export AGENT_WORK=$HOME/work
+  export DEEPSEEK_KEY=sk-xxxx        # 只对当前会话有效
   python3 webchat.py                 # 默认 127.0.0.1:8765
+
+  更省事：把配置写进 ~/.config/webchat/env，重启后不用再 export
+      DEEPSEEK_KEY=sk-xxxx
+      AGENT_WORK=/root/work-kit
+      HOST=0.0.0.0
+
   python3 webchat.py --port 9000
   python3 webchat.py --mock          # 无 key 也能看界面（假对话）
 
@@ -26,6 +31,37 @@ import urllib.request
 import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+def load_env_file(path=None):
+    """读 KEY=VALUE 文件补进环境变量，已设置的不覆盖。
+
+    默认 ~/.config/webchat/env。虚拟机/手机重启后环境变量会清空，
+    写进这个文件就不用每次 export；里面可以同时放 DEEPSEEK_KEY、
+    AGENT_WORK、HOST、PORT、AGENT_MAX_TURNS。
+    """
+    path = path or os.path.expanduser(os.environ.get("WEBCHAT_ENV", "~/.config/webchat/env"))
+    try:
+        fh = open(path, "r", encoding="utf-8")
+    except OSError:
+        return None
+    with fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[7:].strip()
+            if "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            if k and k not in os.environ:
+                os.environ[k] = v
+    return path
+
+
+ENV_FILE = load_env_file()
+
 WORK = os.path.abspath(os.path.expanduser(os.environ.get("AGENT_WORK", "~/work")))
 API_KEY = os.environ.get("DEEPSEEK_KEY", "")
 API_URL = os.environ.get("DEEPSEEK_URL", "https://api.deepseek.com/chat/completions")
@@ -33,7 +69,7 @@ MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 # 单条消息内最多几轮「模型 → 工具 → 模型」。12 太小：稍微复杂的任务（看屏幕、改文件、
 # 跑命令、验证）十几步就顶到天花板，停下来又不说，看起来就是"卡死"。
 MAX_TURNS = int(os.environ.get("AGENT_MAX_TURNS", "100"))
-HOST = "127.0.0.1"
+HOST = os.environ.get("WEBCHAT_HOST") or os.environ.get("HOST") or "127.0.0.1"
 PORT = int(os.environ.get("PORT", "8765"))
 MOCK = False
 
@@ -848,9 +884,18 @@ def main():
     globals()["SYSTEM"] = build_system(WORK)
 
     if not MOCK and not API_KEY:
-        print("缺少 DEEPSEEK_KEY。先执行：")
-        print('  export DEEPSEEK_KEY=sk-你的key')
-        print("或加 --mock 只看界面。")
+        print("缺少 DEEPSEEK_KEY。两种办法，任选一个：")
+        print("")
+        print("  1) 写进文件（推荐，重启不丢）")
+        print("       mkdir -p ~/.config/webchat")
+        print("       echo 'DEEPSEEK_KEY=sk-你的key' > ~/.config/webchat/env")
+        print("       chmod 600 ~/.config/webchat/env")
+        print("     同一份文件里还能写：AGENT_WORK=/root/work-kit  HOST=0.0.0.0")
+        print("")
+        print("  2) 只对本次会话有效")
+        print("       export DEEPSEEK_KEY=sk-你的key")
+        print("")
+        print("  或者加 --mock，不用 key，只看界面。")
         return 2
 
     srv = ThreadingHTTPServer((a.host, PORT), Handler)
@@ -860,8 +905,13 @@ def main():
     print("  %s" % url)
     print("  工作目录 %s" % WORK)
     print("  模式 %s" % ("MOCK 演示" if MOCK else MODEL))
+    if a.host not in ("127.0.0.1", "localhost"):
+        print("  监听 %s:%d（所有网卡，端口映射能进来了）" % (a.host, PORT))
+    if ENV_FILE:
+        print("  配置 %s" % ENV_FILE)
     print("  Ctrl+C 停止")
     print("")
+    sys.stdout.flush()
     if os.environ.get("TERMUX_VERSION") or "com.termux" in sys.executable:
         try:
             subprocess.Popen(["termux-open-url", url],
