@@ -95,6 +95,47 @@ wc -c rev.py webchat.py adui.py ocr.py
 仍然建议定期备份：`tar czf ~/backup.tgz ~/work`。
 
 
+### 1.1 一键更新
+
+仓库里带了一个 `update.sh`，以后换新版不用记文件地址、不用逐个 curl：
+
+**第一次：取脚本并更新全部**
+
+```
+cd ~/work
+curl -fL -o update.sh.part https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/update.sh
+mv update.sh.part update.sh && chmod +x update.sh
+sh update.sh
+```
+
+以后只要一句：
+
+```
+sh ~/work/update.sh
+```
+
+它做的事：
+
+| 行为 | 为什么重要 |
+|---|---|
+| 先下临时文件 | 断网、下到一半、镜像返回半截内容，都**不会**覆盖你正在用的文件 |
+| 内容比对 | 跟本地一模一样就跳过，不写盘、不产生 `.bak` |
+| 语法预检 | `.py` 先编译一遍，坏了直接拒绝写入，旧文件原样保留 |
+| 自动换镜像 | ghfast 不通就试 gh-proxy，再试 raw |
+
+三种用法：
+
+```
+sh update.sh --list      # 只看本地和远端的版本差，不下载
+sh update.sh ocr.py      # 只更新一个，可写多个
+sh update.sh --self      # 更新 update.sh 自己
+```
+
+> 更新完它会提示跑 `python3 ocr.py doctor` 和 `python3 adui.py doctor` 复查。
+
+`.bak` 是上一次的版本，确认新版没问题后可以删：`rm -f *.bak`。
+
+
 ## 二、手机线部署（Termux）
 
 手机是主战场：既能聊天，又能操控屏幕。全套约 15 分钟，其中配对占一半时间。
@@ -623,6 +664,7 @@ python3 ~/work/ocr.py shot.png      # 自动用 ~/.tessdata
 | 识别屏幕文字 | `python3 adui.py ocr`（截图 + OCR + 坐标） |
 | 识别图片 / PDF | `python3 ocr.py 文件` |
 | OCR 自检 | `python3 ocr.py doctor` |
+| 更新全部脚本 | `sh ~/work/update.sh` |
 | 看是否连上 | `adb devices` |
 | 断开 | `adb disconnect` |
 | 看手机屏幕 | `python3 adui.py look` |
