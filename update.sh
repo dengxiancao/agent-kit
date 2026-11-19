@@ -13,7 +13,7 @@
 #   3. 内容没变就不写盘，不产生多余 .bak
 
 SELF_VER=1
-KIT_FILES="rev.py webchat.py adui.py ocr.py"
+KIT_FILES="rev.py webchat.py adui.py ocr.py static/app.html static/app.css static/app.js"
 DEFAULT_BASE="https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main"
 # BASES 可直接用环境变量指定（多个用换行分隔），指定后不再追加默认镜像
 if [ -n "${BASES:-}" ]; then
@@ -69,6 +69,7 @@ PY
 # 依次尝试镜像，成功返回 0
 fetch() {  # $1=文件名  $2=落地路径
     _name="$1"; _dst="$2"
+    mkdir -p "$(dirname "$_dst")" 2>/dev/null
     for _b in $BASES; do
         [ -z "$_b" ] && continue
         rm -f "$_dst"
@@ -203,6 +204,9 @@ for f in $TARGETS; do
         continue
     fi
 
+    # 目标目录可能是 static/
+    mkdir -p "$(dirname "$f")" 2>/dev/null
+
     # .py 先过语法检查
     case "$f" in
         *.py)
@@ -233,6 +237,10 @@ if [ -n "$CHANGED" ]; then
     case " $CHANGED " in
         *" ocr.py "*|*" adui.py "*)
             say "建议复查：${B}python3 ocr.py doctor${N}   ${B}python3 adui.py doctor${N}" ;;
+    esac
+    case " $CHANGED " in
+        *" webchat.py "*|*" static/app.html "*)
+            say "webchat 有更新，重启一次服务：${B}python3 webchat.py${N}" ;;
     esac
 elif [ -z "$FAILED_DL$FAILED_CHK" ]; then
     say "${G}全部已是最新${N}，没有写盘"

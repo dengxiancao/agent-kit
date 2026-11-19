@@ -9,7 +9,8 @@ OCR 依赖系统的 Tesseract（`pkg install tesseract`），Pillow 可选。
 
 | 文件 | 干什么 | 跑在哪 |
 |---|---|---|
-| `webchat.py` | 浏览器里的聊天界面，流式输出 + 工具调用卡片 | 手机 / 虚拟机 |
+| `webchat.py` | 浏览器聊天界面：多会话、跨重启记忆、三栏布局、运行详情 | 手机 / 虚拟机 |
+| `static/` | 界面本体（`app.html` / `app.css` / `app.js`），`webchat.py` 启动时读取 | 手机 / 虚拟机 |
 | `rev.py` | 逆向侦察：ELF / PE / DEX / APK 结构、字符串、熵、carve | 手机 / 虚拟机 |
 | `adui.py` | 安卓控屏：adb + uiautomator，看屏幕、点按钮、输中文、截屏 OCR | 手机 |
 | `ocr.py` | 本地 OCR：图片 / PDF → 文字 + 坐标，彩色背景和深色模式都能认 | 手机 / 虚拟机 |
@@ -48,6 +49,10 @@ python3 webchat.py --port 8080
 
 浏览器打开 `http://127.0.0.1:8080`。
 
+左侧是会话列表，聊过的都在，关掉终端、重启虚拟机再打开还是那些对话。
+每条回复下面有步数 / 耗时 / token，右栏能看到上下文占用和工具时间线。
+手机上侧栏收成抽屉（左上角 ☰），运行详情是底部弹层（顶部图表按钮）。
+
 > **单条消息最多跑 100 步**（模型 → 工具 → 模型 算一步）。到上限会明确提示，回一句「继续」接着跑；
 > 想调大用环境变量 `AGENT_MAX_TURNS=300 python3 webchat.py`，不用改代码。
 
@@ -70,6 +75,22 @@ chmod 600 ~/.config/webchat/env
 > 里面每一步都有预期输出和失败对照表。**建议先读手册再动手**，尤其是 ADB 那一节。
 >
 > 在线看：<https://dengxiancao.github.io/android-agent-kit/MANUAL.html> （手机浏览器直接打开，排版自适应）
+
+## 对话记在哪
+
+会话和消息存在一个 SQLite 文件里：
+
+```
+~/.local/share/webchat/sessions.db
+```
+
+- **备份 / 换机**：`cp` 这一个文件走就行，消息、标题、置顶全在里面。
+- **清空历史**：删掉它，下次启动会重建。
+- **换位置**：`WEBCHAT_DB=/path/to/my.db python3 webchat.py`
+- **不要落盘**：`python3 webchat.py --no-db`，退回早先的单会话内存模式。
+
+进程被杀、断电、虚拟机重启都不会丢正在跑的对话：每接一条消息就写库，
+崩在半路的那一轮会在下次打开时补一条「任务被中断」，点「继续」能接着跑。
 
 ## 手机控屏速查
 
@@ -104,6 +125,8 @@ python3 adui.py ocr                              # 截屏 + 识别 + 给出可�
 
 - `adui.py` 拥有 adb shell 权限，能点任何按钮、读任何界面 —— 包括支付确认页。
 - `webchat.py --host 0.0.0.0` 会把命令执行权开给同一网段的任何设备。
+- 会话库 `sessions.db` 等于一份「你在这台机器上干过的所有事」的记录，**默认没有密码**。
+  暴露到局域网前想清楚；至少把 `HOST` 留在 `127.0.0.1`。
 - `termux-setup-storage` 会把整个 `/sdcard` 暴露给脚本。
 - 不要把 `OPENAI_API_KEY` 提交进仓库，也不要贴到聊天里。
 

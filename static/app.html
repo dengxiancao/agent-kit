@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131417" media="(prefers-color-scheme: dark)">
+<title>Agent</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- 侧栏 -->
+  <aside class="sidebar" id="sidebar">
+    <div class="side-top">
+      <div class="brand">
+        <div class="logo">A</div>
+        <span class="bn">Agent</span>
+        <span class="bv" id="ver">v2</span>
+      </div>
+      <button class="newbtn" id="newbtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        新对话
+        <span class="k">⌘K</span>
+      </button>
+      <label class="search">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="q" placeholder="搜索对话" autocomplete="off">
+      </label>
+    </div>
+    <div class="side-list" id="list"></div>
+    <div class="side-foot">
+      <div class="avatar">D</div>
+      <span class="fn" id="footinfo">local</span>
+      <button class="iconbtn" id="theme" title="切换深色">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+      </button>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <!-- 主区 -->
+  <main class="main">
+    <header class="topbar">
+      <button class="iconbtn only-m" id="menu" title="会话列表">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="title" id="title">新对话</div>
+      <span class="chip br" id="chip-model">deepseek-chat</span>
+      <span class="chip hide-m" id="chip-ctx">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg>
+        <span>上下文 0 / 64k</span>
+      </span>
+      <span class="chip ok" id="chip-state"><i class="dot"></i><span>空闲</span></span>
+      <div class="tb-right">
+        <button class="iconbtn only-m" id="insbtn" title="运行详情">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l3.5-4.5 3 2L20 6"/></svg>
+        </button>
+        <button class="iconbtn" id="stopbtn" title="停止" hidden>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </button>
+        <button class="iconbtn hide-m" id="exportbtn" title="导出 Markdown">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="scroll" id="scroll">
+      <div class="thread" id="thread"></div>
+    </div>
+
+    <div class="cwrap">
+      <div class="composer">
+        <div class="cbox" id="cbox">
+          <textarea id="ta" rows="1" placeholder="说点什么，或让它干活…"></textarea>
+          <div class="cbot">
+            <span class="lbl" id="lbl-model">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4.5 13.5H11l-1 8.5L19.5 10H13z"/></svg>
+              <span>deepseek-chat</span>
+            </span>
+            <span class="lbl hide-m" id="lbl-work"></span>
+            <span class="sp"></span>
+            <button class="send" id="send" disabled title="发送">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="below" id="hint"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 右侧详情 -->
+  <aside class="inspector" id="insp">
+    <div class="ins-h">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l3.5-4.5 3 2L20 6"/></svg>
+      运行详情
+      <button class="iconbtn only-m" id="insclose" title="关闭">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="ins-body" id="insbody"></div>
+    <div class="ins-foot" id="insfoot"></div>
+  </aside>
+</div>
+
+<div class="popmenu" id="pop"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

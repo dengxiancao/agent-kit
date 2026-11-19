@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent · 界面重构原型</title>
+<style>
+:root{
+  --bg:#ffffff; --side:#fafafb; --side-2:#f4f4f6; --side-active:#eceef4;
+  --fg:#17181a; --fg2:#5a5f68; --muted:#9298a3; --line:#ebebef; --line-2:#f2f2f5;
+  --brand:#4d6bfe; --brand-soft:#eef1ff; --brand-line:#dfe4ff;
+  --user-bubble:#f2f4ff; --user-line:#e6e9fb;
+  --code-bg:#f8f9fb; --card:#ffffff; --shadow:0 1px 2px rgba(16,24,40,.04),0 8px 24px rgba(16,24,40,.05);
+  --ok:#12a06a; --ok-soft:#e9f8f1; --warn:#b7791f; --err:#d9382b; --err-soft:#fdecea;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Noto Sans Mono CJK SC",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#131417; --side:#17181c; --side-2:#1e1f24; --side-active:#26282f;
+    --fg:#e9eaee; --fg2:#a6abb6; --muted:#787d88; --line:#26272d; --line-2:#212228;
+    --brand:#7b90ff; --brand-soft:#1d2136; --brand-line:#2b3355;
+    --user-bubble:#1c2033; --user-line:#28304d;
+    --code-bg:#0f1013; --card:#18191e; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+    --ok:#3ddc97; --ok-soft:#12251c; --err:#ff7163; --err-soft:#2a1614;
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg);color:var(--fg);
+  font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;overflow:hidden;
+}
+.app{display:flex;height:100vh;height:100dvh;overflow:hidden}
+
+/* ---------------- 侧栏 ---------------- */
+.sidebar{
+  flex:0 0 264px;width:264px;background:var(--side);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0;
+}
+.side-top{padding:14px 12px 8px;display:flex;flex-direction:column;gap:10px}
+.brand{display:flex;align-items:center;gap:9px;padding:0 4px 6px}
+.logo{
+  width:26px;height:26px;border-radius:8px;flex:0 0 auto;
+  background:linear-gradient(145deg,#5b7bff,#3b52d6);
+  box-shadow:0 2px 8px rgba(77,107,254,.35);
+  display:grid;place-items:center;color:#fff;font-size:13px;font-weight:800;
+}
+.brand .bn{font-size:13.5px;font-weight:650;letter-spacing:.2px}
+.brand .bv{font-size:10.5px;color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums}
+.newbtn{
+  display:flex;align-items:center;gap:9px;width:100%;padding:9px 11px;border-radius:10px;
+  border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-size:13.5px;
+  font-weight:550;cursor:pointer;box-shadow:0 1px 1px rgba(16,24,40,.03);
+}
+.newbtn:hover{background:var(--side-2)}
+.newbtn .k{margin-left:auto;font-size:10.5px;color:var(--muted);font-family:var(--mono);
+  border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.search{
+  display:flex;align-items:center;gap:8px;padding:0 10px;height:32px;border-radius:9px;
+  background:var(--side-2);border:1px solid transparent;color:var(--muted);font-size:12.5px;
+}
+.search:hover{border-color:var(--line)}
+.search svg{flex:0 0 auto;opacity:.75}
+.side-list{flex:1 1 auto;overflow-y:auto;padding:4px 8px 10px;min-height:0}
+.side-list::-webkit-scrollbar{width:6px}
+.side-list::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+.grp{font-size:10.5px;color:var(--muted);letter-spacing:.4px;padding:12px 8px 5px;font-weight:600}
+.item{
+  display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:9px;cursor:pointer;
+  color:var(--fg2);font-size:13.2px;line-height:1.35;position:relative;
+}
+.item:hover{background:var(--side-2);color:var(--fg)}
+.item.on{background:var(--side-active);color:var(--fg);font-weight:550}
+.item .tt{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .mt{font-size:10.5px;color:var(--muted);flex:0 0 auto;font-variant-numeric:tabular-nums}
+.item.run .tt::after{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:var(--brand);margin-left:6px;vertical-align:middle;animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+.side-foot{border-top:1px solid var(--line);padding:9px 10px;display:flex;align-items:center;gap:9px}
+.avatar{width:24px;height:24px;border-radius:50%;background:var(--side-active);display:grid;
+  place-items:center;font-size:11px;font-weight:700;color:var(--fg2);flex:0 0 auto}
+.side-foot .fn{font-size:12.5px;color:var(--fg2);flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.iconbtn{width:28px;height:28px;border-radius:7px;border:none;background:none;color:var(--muted);
+  display:grid;place-items:center;cursor:pointer;flex:0 0 auto;padding:0}
+.iconbtn:hover{background:var(--side-2);color:var(--fg)}
+
+/* ---------------- 主区 ---------------- */
+.main{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative;background:var(--bg)}
+.topbar{
+  flex:0 0 auto;height:54px;display:flex;align-items:center;gap:10px;padding:0 18px;
+  border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(12px);position:relative;z-index:3;
+}
+.title{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:38%}
+.chip{
+  display:inline-flex;align-items:center;gap:5px;height:23px;padding:0 8px;border-radius:6px;
+  font-size:11px;color:var(--fg2);background:var(--side-2);border:1px solid transparent;
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.chip svg{opacity:.7}
+.chip.br{background:var(--brand-soft);color:var(--brand);border-color:var(--brand-line);font-weight:600}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.chip.ok .dot{width:5px;height:5px;border-radius:50%;background:currentColor}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:7px}
+
+.scroll{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth;min-height:0}
+.scroll::-webkit-scrollbar{width:8px}
+.scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px;border:2px solid var(--bg)}
+.thread{max-width:748px;margin:0 auto;padding:26px 24px 12px}
+
+.msg{margin:0 0 26px;display:flex;gap:11px;position:relative}
+.msg.u{justify-content:flex-end}
+.msg.u .body{background:var(--user-bubble);border:1px solid var(--user-line);border-radius:14px;
+  border-bottom-right-radius:4px;padding:9px 13px;max-width:80%;white-space:pre-wrap;word-break:break-word}
+.msg.a .body{flex:1 1 auto;min-width:0;padding-top:2px}
+.ava{width:26px;height:26px;border-radius:8px;flex:0 0 auto;display:grid;place-items:center;
+  font-size:11px;font-weight:800;color:#fff;background:linear-gradient(145deg,#5b7bff,#3b52d6);
+  box-shadow:0 1px 4px rgba(77,107,254,.3);margin-top:1px}
+.ava.ghost{background:var(--side-2);color:var(--muted);box-shadow:none;font-weight:700}
+
+.md{font-size:15px;line-height:1.72;word-break:break-word}
+.md p{margin:0 0 11px}.md p:last-child{margin-bottom:0}
+.md h2{font-size:16.5px;margin:20px 0 9px;font-weight:650;letter-spacing:.1px}
+.md h3{font-size:15px;margin:16px 0 7px;font-weight:650}
+.md ul,.md ol{margin:6px 0 12px;padding-left:21px}.md li{margin:4px 0}
+.md strong{font-weight:650}
+.md code{font:.86em/1.5 var(--mono);background:var(--code-bg);border:1px solid var(--line);
+  border-radius:5px;padding:1.5px 5px;color:#c7254e}
+@media (prefers-color-scheme:dark){.md code{color:#ff9bb3}}
+.md a{color:var(--brand);text-decoration:none;border-bottom:1px solid transparent}
+.md a:hover{border-bottom-color:var(--brand)}
+
+/* 表格 */
+.tablewrap{border:1px solid var(--line);border-radius:11px;overflow:hidden;margin:10px 0 14px}
+.md table{border-collapse:collapse;width:100%;font-size:13.4px}
+.md th,.md td{padding:8px 11px;text-align:left;border-bottom:1px solid var(--line-2);vertical-align:top}
+.md tr:last-child td{border-bottom:none}
+.md th{background:var(--side-2);font-weight:600;font-size:12.3px;color:var(--fg2);white-space:nowrap}
+.md td{font-size:13.2px}
+.badge{display:inline-block;font-size:10.5px;line-height:1.6;padding:0 6px;border-radius:5px;
+  font-weight:600;letter-spacing:.1px;white-space:nowrap}
+.badge.r{background:var(--err-soft);color:var(--err)}
+.badge.y{background:#fdf6e3;color:var(--warn)}
+@media (prefers-color-scheme:dark){.badge.y{background:#2a2314;color:#e3b341}}
+
+/* 代码块 */
+.codewrap{border:1px solid var(--line);border-radius:11px;overflow:hidden;margin:11px 0 14px;background:var(--code-bg)}
+.codehead{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);
+  font-size:11px;color:var(--muted);font-family:var(--mono)}
+.codehead .lg{font-weight:600;color:var(--fg2);letter-spacing:.3px}
+.codehead .sp{margin-left:auto}
+.codehead button{border:none;background:none;color:var(--muted);font:inherit;font-size:11px;cursor:pointer;
+  padding:2px 5px;border-radius:5px;display:inline-flex;align-items:center;gap:4px}
+.codehead button:hover{background:var(--side-2);color:var(--fg)}
+.codewrap pre{margin:0;padding:12px 13px;overflow-x:auto}
+.codewrap pre code{font:12.4px/1.65 var(--mono);background:none;border:none;padding:0;color:var(--fg);
+  white-space:pre;display:block}
+.tk-k{color:#a626a4}.tk-s{color:#3d8b40}.tk-c{color:#9aa0a6}.tk-n{color:#c18401}
+@media (prefers-color-scheme:dark){.tk-k{color:#c678dd}.tk-s{color:#98c379}.tk-c{color:#6b7280}.tk-n{color:#e5c07b}}
+
+/* 思考块 */
+.think{border:1px solid var(--line);background:var(--side);border-radius:10px;margin:0 0 13px;overflow:hidden}
+.think-h{display:flex;align-items:center;gap:7px;padding:7px 11px;cursor:pointer;user-select:none;
+  font-size:12px;color:var(--muted)}
+.think-h .tx{font-weight:550}
+.think-h .ar{margin-left:auto;font-size:10px;transition:transform .18s}
+.think.open .think-h .ar{transform:rotate(90deg)}
+.think-b{display:none;padding:0 12px 11px;font-size:13px;color:var(--fg2);line-height:1.68;
+  border-top:1px solid var(--line-2);padding-top:9px;white-space:pre-wrap}
+.think.open .think-b{display:block}
+
+/* 工具卡 */
+.tool{border:1px solid var(--line);border-radius:11px;margin:0 0 12px;overflow:hidden;background:var(--card)}
+.tool-h{display:flex;align-items:center;gap:9px;padding:8px 11px;cursor:pointer;user-select:none}
+.tool-h:hover{background:var(--side)}
+.ti{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;flex:0 0 auto;
+  background:var(--side-2);color:var(--fg2)}
+.ti.ok{background:var(--ok-soft);color:var(--ok)}
+.tname{font-size:12px;font-weight:650;font-family:var(--mono);flex:0 0 auto;letter-spacing:-.2px}
+.targ{font-size:12.3px;color:var(--fg2);font-family:var(--mono);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
+.tmeta{font-size:10.5px;color:var(--muted);flex:0 0 auto;font-variant-numeric:tabular-nums}
+.tool-b{display:none;border-top:1px solid var(--line);background:var(--code-bg);
+  max-height:260px;overflow:auto}
+.tool.open .tool-b{display:block}
+.tool-b pre{margin:0;padding:10px 12px;font:12px/1.6 var(--mono);white-space:pre;color:var(--fg2)}
+.tool-b .ln{color:var(--muted);user-select:none;display:inline-block;width:22px;text-align:right;
+  margin-right:10px;opacity:.6}
+
+/* 消息页脚 */
+.mfoot{display:flex;align-items:center;gap:12px;margin-top:10px;font-size:11px;color:var(--muted);
+  font-variant-numeric:tabular-nums}
+.mfoot .acts{display:flex;gap:2px;margin-left:auto;opacity:0;transition:opacity .12s}
+.msg:hover .mfoot .acts{opacity:1}
+.mfoot .acts button{width:26px;height:26px;border-radius:6px;border:none;background:none;color:var(--muted);
+  display:grid;place-items:center;cursor:pointer;padding:0}
+.mfoot .acts button:hover{background:var(--side-2);color:var(--fg)}
+.warnbox{display:flex;gap:8px;align-items:flex-start;border:1px solid #f0d9a8;background:#fffbf0;
+  color:#8a6413;border-radius:10px;padding:8px 11px;font-size:12.6px;margin:10px 0 0;line-height:1.6}
+@media (prefers-color-scheme:dark){.warnbox{background:#241e10;border-color:#4a3c16;color:#e0bb63}}
+
+/* 输入区 */
+.cwrap{flex:0 0 auto;padding:16px 24px calc(env(safe-area-inset-bottom) + 14px);
+  background:linear-gradient(to bottom,rgba(255,255,255,0) 0%,var(--bg) 58%)}
+.composer{max-width:748px;margin:0 auto}
+.cbox{border:1px solid var(--line);border-radius:16px;background:var(--card);box-shadow:var(--shadow);
+  transition:border-color .15s,box-shadow .15s;overflow:hidden}
+.cbox.focus{border-color:var(--brand-line);box-shadow:0 0 0 3px var(--brand-soft),var(--shadow)}
+.cbox textarea{display:block;width:100%;border:none;outline:none;resize:none;background:none;color:var(--fg);
+  font:15px/1.6 inherit;padding:13px 15px 4px;max-height:132px;min-height:44px}
+.cbox textarea::placeholder{color:var(--muted)}
+.cbot{display:flex;align-items:center;gap:4px;padding:5px 7px 7px 9px}
+.cbot .lbl{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--fg2);
+  padding:4px 7px;border-radius:7px;cursor:pointer;white-space:nowrap}
+.cbot .lbl:hover{background:var(--side-2)}
+.cbot .lbl svg{opacity:.75}
+.cbot .sp{margin-left:auto}
+.send{width:30px;height:30px;border-radius:9px;border:none;background:var(--brand);color:#fff;
+  display:grid;place-items:center;cursor:pointer;flex:0 0 auto;transition:opacity .15s,transform .1s}
+.send:hover{transform:translateY(-1px)}
+.send:disabled{opacity:.28;cursor:default;transform:none}
+.below{display:flex;align-items:center;gap:8px;justify-content:center;font-size:10.5px;
+  color:var(--muted);margin-top:8px;letter-spacing:.1px}
+.below .k{font-family:var(--mono);border:1px solid var(--line);border-radius:4px;padding:0 3px;font-size:10px}
+
+/* 右侧详情 */
+.inspector{flex:0 0 286px;width:286px;border-left:1px solid var(--line);background:var(--side);
+  display:flex;flex-direction:column;min-height:0}
+.ins-h{height:54px;flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:0 14px;
+  border-bottom:1px solid var(--line);font-size:12.5px;font-weight:600}
+.ins-h .iconbtn{margin-left:auto}
+.ins-body{flex:1 1 auto;overflow-y:auto;padding:12px 13px 18px;min-height:0}
+.ins-body::-webkit-scrollbar{width:6px}
+.ins-body::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+.card{border:1px solid var(--line);background:var(--card);border-radius:11px;padding:11px 12px;margin-bottom:10px}
+.card .ch{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--muted);
+  letter-spacing:.4px;font-weight:600;margin-bottom:9px}
+.card .ch .r{margin-left:auto;font-weight:500;letter-spacing:0}
+.kv{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12.3px;
+  padding:3px 0;color:var(--fg2)}
+.kv b{font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums}
+.bar{height:4px;border-radius:9px;background:var(--side-2);overflow:hidden;margin:8px 0 5px}
+.bar i{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,#7b90ff,#4d6bfe)}
+.bar i.w{background:linear-gradient(90deg,#f0b429,#e08b00)}
+.mini{font-size:10.5px;color:var(--muted);display:flex;justify-content:space-between;
+  font-variant-numeric:tabular-nums}
+.tl{position:relative;padding-left:16px}
+.tl::before{content:"";position:absolute;left:4.5px;top:6px;bottom:8px;width:1.5px;background:var(--line)}
+.tli{position:relative;padding:0 0 11px}
+.tli:last-child{padding-bottom:0}
+.tli::before{content:"";position:absolute;left:-15px;top:5px;width:8px;height:8px;border-radius:50%;
+  background:var(--card);border:2px solid var(--ok)}
+.tli.f::before{border-color:var(--err)}
+.tli .n{font-size:11.5px;font-family:var(--mono);font-weight:600;display:flex;gap:6px;align-items:center}
+.tli .d{font-size:10.5px;color:var(--muted);margin-top:1px;font-variant-numeric:tabular-nums;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ins-foot{flex:0 0 auto;border-top:1px solid var(--line);padding:9px 14px;font-size:10.5px;
+  color:var(--muted);line-height:1.6}
+.ins-foot .p{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+
+/* 移动端 */
+.mob-top{display:none}
+.scrim{display:none}
+.only-m{display:none!important}
+@media (max-width:1100px) and (min-width:861px){ .inspector{display:none} }
+@media (max-width:860px){
+  .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-102%);
+    transition:transform .26s cubic-bezier(.4,0,.2,1);box-shadow:0 0 40px rgba(0,0,0,.18);width:284px;flex-basis:284px}
+  body.drawer .sidebar{transform:none}
+  body.drawer .scrim{display:block;position:fixed;inset:0;background:rgba(16,18,24,.4);z-index:50;
+    animation:fade .2s}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  .topbar{height:52px;padding:0 12px;gap:8px;padding-top:env(safe-area-inset-top)}
+  .title{max-width:56%;font-size:14px}
+  .chip.hide-m,.chip.br{display:none}
+  .md{font-size:14.6px}
+  .md table{font-size:12.4px}
+  .md th,.md td{padding:7px 8px}
+  .tool-b pre{font-size:11px;line-height:1.6}
+  .tool-b{-webkit-mask-image:linear-gradient(to right,#000 90%,rgba(0,0,0,.15));
+          mask-image:linear-gradient(to right,#000 90%,rgba(0,0,0,.15))}
+  .thread{padding:18px 15px 8px}
+  .msg{gap:9px;margin-bottom:22px}
+  .msg.u .body{max-width:88%}
+  .ava{width:24px;height:24px;border-radius:7px}
+  .cwrap{padding:4px 12px calc(env(safe-area-inset-bottom) + 10px)}
+  .cbox{border-radius:15px}
+  .below{display:none}
+  .mfoot .acts{opacity:1}
+  .codewrap pre code{font-size:11.8px}
+  .only-m{display:grid!important}
+  .inspector{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;flex-basis:auto;
+    height:72vh;z-index:70;border-left:none;border-top:1px solid var(--line);
+    border-radius:18px 18px 0 0;transform:translateY(101%);
+    transition:transform .28s cubic-bezier(.4,0,.2,1);box-shadow:0 -10px 50px rgba(0,0,0,.2)}
+  body.ins .inspector{transform:none}
+  body.ins .scrim{display:block;position:fixed;inset:0;background:rgba(16,18,24,.4);z-index:65}
+  .ins-h{height:46px;border-radius:18px 18px 0 0;padding:0 14px;position:relative}
+  .ins-h::before{content:"";position:absolute;left:50%;top:6px;transform:translateX(-50%);
+    width:34px;height:3.5px;border-radius:9px;background:var(--line)}
+  .ins-body{padding-bottom:calc(env(safe-area-inset-bottom) + 18px)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ 侧栏 ============ -->
+  <aside class="sidebar">
+    <div class="side-top">
+      <div class="brand">
+        <div class="logo">A</div>
+        <span class="bn">Agent</span>
+        <span class="bv">v1.4</span>
+      </div>
+      <button class="newbtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        新对话
+        <span class="k">⌘K</span>
+      </button>
+      <div class="search">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        搜索对话
+      </div>
+    </div>
+
+    <div class="side-list">
+      <div class="grp">今天</div>
+      <div class="item on"><span class="tt">分析 wechat.apk 的权限</span><span class="mt">14:02</span></div>
+      <div class="item run"><span class="tt">自动点外卖流程</span><span class="mt">运行中</span></div>
+      <div class="item"><span class="tt">写个统计文件大小的脚本</span><span class="mt">11:40</span></div>
+      <div class="grp">昨天</div>
+      <div class="item"><span class="tt">反编译 libnative.so 找加密函数</span><span class="mt">21:08</span></div>
+      <div class="item"><span class="tt">OCR 识别截图里的文字</span><span class="mt">19:33</span></div>
+      <div class="item"><span class="tt">termux 端口映射怎么配</span><span class="mt">16:20</span></div>
+      <div class="item"><span class="tt">整理 work 目录结构</span><span class="mt">09:15</span></div>
+      <div class="grp">更早</div>
+      <div class="item"><span class="tt">给 adui.py 加 doctor 子命令</span><span class="mt">11/17</span></div>
+      <div class="item"><span class="tt">webchat 前端配色调整</span><span class="mt">11/17</span></div>
+      <div class="item"><span class="tt">鸿蒙虚拟机技术方案</span><span class="mt">11/16</span></div>
+      <div class="item"><span class="tt">HiSH 图形界面配置</span><span class="mt">11/16</span></div>
+    </div>
+
+    <div class="side-foot">
+      <div class="avatar">D</div>
+      <span class="fn">dengxiancao</span>
+      <button class="iconbtn" title="设置">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.6 1.6 0 00-1-1.5 1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H3a2 2 0 110-4h.1a1.6 1.6 0 001.5-1 1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H9a1.6 1.6 0 001-1.5V3a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V9a1.6 1.6 0 001.5 1H21a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/></svg>
+      </button>
+    </div>
+  </aside>
+  <div class="scrim" onclick="document.body.classList.remove('drawer','ins')"></div>
+
+  <!-- ============ 主区 ============ -->
+  <main class="main">
+    <header class="topbar">
+      <button class="iconbtn mob-only" id="menu" style="display:none" onclick="document.body.classList.toggle('drawer')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="title">分析 wechat.apk 的权限</div>
+      <span class="chip br">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/></svg>
+        deepseek-chat
+      </span>
+      <span class="chip hide-m">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg>
+        上下文 5.1k / 64k
+      </span>
+      <span class="chip ok"><span class="dot"></span>空闲</span>
+      <div class="tb-right">
+        <button class="iconbtn only-m" id="insbtn" title="运行详情"
+          onclick="document.body.classList.add('ins')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l3.5-4.5 3 2L20 6"/></svg>
+        </button>
+        <button class="iconbtn hide-m" title="导出">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+        </button>
+        <button class="iconbtn" title="更多">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="scroll" id="scroll">
+      <div class="thread" id="thread">
+
+        <!-- 用户 -->
+        <div class="msg u">
+          <div class="body">分析一下 ~/work/downloads/wechat.apk 的权限，看看有没有敏感权限</div>
+        </div>
+
+        <!-- 助手 -->
+        <div class="msg a">
+          <div class="ava">A</div>
+          <div class="body">
+            <div class="think open">
+              <div class="think-h" onclick="this.parentNode.classList.toggle('open')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 00-3 11v3h6v-3a6 6 0 00-3-11z"/></svg>
+                <span class="tx">已思考 2.4s</span>
+                <span class="ar">›</span>
+              </div>
+              <div class="think-b">先确认文件在不在，再用 rev 的 apk 模式拿包名、权限和组件。权限表出来后按危险等级分组，重点看短信、通讯录、定位、悬浮窗、无障碍这几类。</div>
+            </div>
+
+            <div class="tool open">
+              <div class="tool-h" onclick="this.parentNode.classList.toggle('open')">
+                <span class="ti ok">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg>
+                </span>
+                <span class="tname">rev apk</span>
+                <span class="targ">downloads/wechat.apk</span>
+                <span class="tmeta">412 ms</span>
+              </div>
+              <div class="tool-b"><pre><span class="ln">1</span>package   com.tencent.mm  (8.0.49)
+<span class="ln">2</span>sdk       23 → 34   ABI arm64-v8a, armeabi-v7a
+<span class="ln">3</span>size      248.6 MB   dex 14   so 23
+<span class="ln">4</span>perms     38 个
+<span class="ln">5</span>  dangerous   READ_SMS  RECEIVE_SMS  READ_CONTACTS
+<span class="ln">6</span>              ACCESS_FINE_LOCATION  RECORD_AUDIO  CAMERA
+<span class="ln">7</span>  special     SYSTEM_ALERT_WINDOW  REQUEST_INSTALL_PACKAGES
+<span class="ln">8</span>  normal      INTERNET  ACCESS_NETWORK_STATE  VIBRATE ...
+<span class="ln">9</span>components   activity 214   service 61   receiver 28</pre></div>
+            </div>
+
+            <div class="md">
+              <p>包名 <code>com.tencent.mm</code>，38 个权限，其中 <strong>6 个危险权限</strong>、<strong>2 个特殊权限</strong>。摘要：</p>
+              <div class="tablewrap"><table>
+                <thead><tr><th>权限</th><th>等级</th><th>说明</th></tr></thead>
+                <tbody>
+                  <tr><td><code>READ_SMS</code> / <code>RECEIVE_SMS</code></td><td><span class="badge r">危险</span></td><td>读短信、收短信验证码</td></tr>
+                  <tr><td><code>READ_CONTACTS</code></td><td><span class="badge r">危险</span></td><td>读取通讯录</td></tr>
+                  <tr><td><code>ACCESS_FINE_LOCATION</code></td><td><span class="badge r">危险</span></td><td>精确定位</td></tr>
+                  <tr><td><code>SYSTEM_ALERT_WINDOW</code></td><td><span class="badge y">特殊</span></td><td>悬浮窗，可覆盖其他应用</td></tr>
+                  <tr><td><code>REQUEST_INSTALL_PACKAGES</code></td><td><span class="badge y">特殊</span></td><td>可拉起安装包</td></tr>
+                </tbody>
+              </table></div>
+              <p>结论：这些权限对 IM 来说是常规配置，但 <code>READ_SMS</code> 值得单独确认——只在自动填验证码时用，正常情况下应当申请 <code>SMS_RETRIEVER</code> 而不是全量读取。</p>
+            </div>
+
+            <div class="mfoot">
+              <span>4 步</span><span>·</span><span>18.6s</span><span>·</span><span>2,180 tokens</span>
+              <div class="acts">
+                <button title="复制"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg></button>
+                <button title="重新生成"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+                <button title="分支"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 7v10M8 12h8"/></svg></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 用户 -->
+        <div class="msg u">
+          <div class="body">把结果写成 report.md，顺便给个能直接跑的命令</div>
+        </div>
+
+        <!-- 助手 -->
+        <div class="msg a">
+          <div class="ava">A</div>
+          <div class="body">
+            <div class="tool open">
+              <div class="tool-h" onclick="this.parentNode.classList.toggle('open')">
+                <span class="ti ok"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M4 12.5l5 5L20 6.5"/></svg></span>
+                <span class="tname">write_file</span>
+                <span class="targ">report.md</span>
+                <span class="tmeta">9 ms</span>
+              </div>
+              <div class="tool-b"><pre><span class="ln">1</span>已写入 report.md (2,846 字节)</pre></div>
+            </div>
+
+            <div class="md">
+              <p>写好了，<code>~/work/report.md</code>。想重新生成这份报告：</p>
+              <div class="codewrap">
+                <div class="codehead"><span class="lg">sh</span><span class="sp"></span>
+                  <button><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>复制</button>
+                </div>
+                <pre><code><span class="tk-k">cd</span> ~/work &amp;&amp; <span class="tk-k">python3</span> rev.py apk downloads/wechat.apk <span class="tk-k">--grep</span> permission &gt; report.md</code></pre>
+              </div>
+              <div class="warnbox">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:0 0 auto;margin-top:3px"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+                <span>这条命令会把终端输出整体覆盖进 report.md，原有内容不保留。要追加就换成 <code>&gt;&gt;</code>。</span>
+              </div>
+            </div>
+
+            <div class="mfoot">
+              <span>2 步</span><span>·</span><span>6.1s</span><span>·</span><span>912 tokens</span>
+              <div class="acts">
+                <button title="复制"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg></button>
+                <button title="重新生成"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 输入区 -->
+    <div class="cwrap">
+      <div class="composer">
+        <div class="cbox focus">
+          <textarea rows="1" placeholder="继续追问，或让它干活…"></textarea>
+          <div class="cbot">
+            <span class="lbl">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.5a8.4 8.4 0 01-9 8.4 9 9 0 01-4-.9L3 21l1-4.6A8.4 8.4 0 013 12.5 8.5 8.5 0 0112 4a8.5 8.5 0 019 8.5z"/></svg>
+              附件
+            </span>
+            <span class="lbl">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h10M4 17h7"/></svg>
+              计划
+            </span>
+            <span class="lbl">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4.5 13.5H11l-1 8.5L19.5 10H13z"/></svg>
+              deepseek-chat
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg>
+            </span>
+            <span class="sp"></span>
+            <button class="send" disabled>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="below">
+          工作目录 <span class="k">~/work</span> · 单轮上限 100 步 · <span class="k">Enter</span> 发送，<span class="k">Shift+Enter</span> 换行
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ 右侧详情 ============ -->
+  <aside class="inspector">
+    <div class="ins-h">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l3.5-4.5 3 2L20 6"/></svg>
+      运行详情
+      <button class="iconbtn" title="收起">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+    <div class="ins-body">
+
+      <div class="card">
+        <div class="ch">上下文<span class="r">8%</span></div>
+        <div class="bar"><i style="width:8%"></i></div>
+        <div class="mini"><span>5,092 tokens</span><span>上限 64,000</span></div>
+        <div style="height:9px"></div>
+        <div class="kv"><span>消息</span><b>6 条</b></div>
+        <div class="kv"><span>工具结果占用</span><b>1.4k</b></div>
+        <div class="kv"><span>预计剩余可聊</span><b>≈ 118 轮</b></div>
+      </div>
+
+      <div class="card">
+        <div class="ch">本轮任务<span class="r" style="color:var(--ok)">已完成</span></div>
+        <div class="kv"><span>总步数</span><b>6 步</b></div>
+        <div class="kv"><span>总耗时</span><b>24.7s</b></div>
+        <div class="kv"><span>Token</span><b>3,092</b></div>
+        <div class="kv"><span>重试 / 失败</span><b>0 / 0</b></div>
+      </div>
+
+      <div class="card">
+        <div class="ch">工具时间线</div>
+        <div class="tl">
+          <div class="tli"><div class="n">rev apk <span style="color:var(--muted);font-weight:400">412ms</span></div><div class="d">downloads/wechat.apk</div></div>
+          <div class="tli"><div class="n">read_file <span style="color:var(--muted);font-weight:400">31ms</span></div><div class="d">downloads/AndroidManifest.txt</div></div>
+          <div class="tli"><div class="n">run_shell <span style="color:var(--muted);font-weight:400">88ms</span></div><div class="d">du -sh downloads/*.apk</div></div>
+          <div class="tli"><div class="n">write_file <span style="color:var(--muted);font-weight:400">9ms</span></div><div class="d">report.md · 2,846 B</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="ch">运行环境</div>
+        <div class="kv"><span>模型</span><b>deepseek-chat</b></div>
+        <div class="kv"><span>温度</span><b>0.3</b></div>
+        <div class="kv"><span>单轮上限</span><b>100 步</b></div>
+        <div class="kv"><span>工具</span><b>6 个</b></div>
+      </div>
+
+    </div>
+    <div class="ins-foot">
+      工作目录<span class="p">/root/work</span>
+      存储<span class="p">~/.local/share/webchat/sessions.db</span>
+    </div>
+  </aside>
+</div>
+<script>
+// 移动端菜单按钮显隐
+function syncMob(){ document.getElementById('menu').style.display = innerWidth<=860 ? 'grid' : 'none'; }
+syncMob(); addEventListener('resize', syncMob);
+// 侧栏点击
+document.querySelectorAll('.item').forEach(el=>el.onclick=()=>{
+  document.querySelectorAll('.item').forEach(x=>x.classList.remove('on'));
+  el.classList.add('on');
+  document.querySelector('.title').textContent = el.querySelector('.tt').textContent;
+  if(innerWidth<=860) document.body.classList.remove('drawer');
+});
+// 输入框
+const ta=document.querySelector('textarea'), send=document.querySelector('.send');
+ta.addEventListener('input',()=>{ ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,132)+'px'; send.disabled=!ta.value.trim(); });
+addEventListener('keydown',e=>{ if(e.key==='k'&&(e.metaKey||e.ctrlKey)) e.preventDefault(); });
+</script>
+</body>
+</html>

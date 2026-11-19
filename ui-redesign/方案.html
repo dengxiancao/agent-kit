@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>webchat 前端与记忆重构方案</title>
+<style>
+:root{
+  --bg:#fff;--fg:#1b1c1f;--fg2:#555a63;--muted:#8d939e;--line:#e8e9ee;
+  --brand:#4d6bfe;--soft:#f4f6ff;--code:#f7f8fa;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#f6f7f9;color:var(--fg);
+  font:16px/1.78 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.page{max-width:920px;margin:0 auto;background:var(--bg);
+  padding:0 56px 80px;box-shadow:0 1px 3px rgba(16,24,40,.06),0 24px 60px rgba(16,24,40,.06)}
+.hero{padding:64px 0 34px;border-bottom:1px solid var(--line);margin-bottom:36px}
+.eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;letter-spacing:.6px;
+  color:var(--brand);background:var(--soft);border:1px solid #e2e8ff;padding:4px 10px;border-radius:99px;font-weight:650}
+h1{font-size:34px;line-height:1.3;margin:18px 0 14px;letter-spacing:-.5px;font-weight:750}
+.lead{font-size:15.5px;color:var(--fg2);margin:0;max-width:680px}
+.tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+.tag{font-size:12px;color:var(--fg2);background:#f5f6f8;border:1px solid var(--line);
+  border-radius:7px;padding:4px 9px}
+h2{font-size:22px;margin:52px 0 16px;letter-spacing:-.3px;font-weight:700;padding-top:6px}
+h2::before{content:"";display:block;width:28px;height:3px;background:var(--brand);
+  border-radius:9px;margin-bottom:14px;opacity:.9}
+h3{font-size:16.5px;margin:30px 0 10px;font-weight:650}
+p{margin:0 0 14px;color:var(--fg2)}
+strong{color:var(--fg);font-weight:650}
+a{color:var(--brand)}
+blockquote{margin:18px 0;padding:12px 16px;background:var(--soft);border-left:3px solid var(--brand);
+  border-radius:0 8px 8px 0;color:var(--fg2);font-size:14.5px}
+blockquote p{margin:0}
+ul,ol{padding-left:22px;margin:10px 0 16px;color:var(--fg2)}
+li{margin:6px 0}
+li.todo{list-style:none;position:relative}
+li.todo .cb{position:absolute;left:-19px;top:5px;width:13px;height:13px;
+  border:1.5px solid #ccd1da;border-radius:4px;display:block;background:#fff}
+li.todo .cb.on{background:var(--brand);border-color:var(--brand)}
+li input{margin-right:6px}
+code{font:.87em/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  background:var(--code);border:1px solid var(--line);border-radius:5px;padding:1.5px 5px;color:#c7254e}
+pre{background:#fbfbfd;border:1px solid var(--line);border-radius:11px;padding:14px 16px;
+  overflow:auto;margin:14px 0 20px}
+pre code{background:none;border:none;padding:0;color:#2c3038;font-size:12.8px;line-height:1.62}
+table{border-collapse:collapse;width:100%;margin:16px 0 22px;font-size:14px}
+th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top;color:var(--fg2)}
+th{background:#f7f8fa;font-weight:650;color:var(--fg);font-size:13px;white-space:nowrap}
+tr:nth-child(even) td{background:#fcfcfd}
+hr{border:none;border-top:1px solid var(--line);margin:44px 0}
+.fig{margin:20px 0 26px}
+img{max-width:100%;display:block;border-radius:12px;border:1px solid #e3e5ea;
+  box-shadow:0 2px 6px rgba(16,24,40,.05),0 18px 44px rgba(16,24,40,.09)}
+img[src*="mobile.png"]{max-width:300px;margin:22px auto}
+img[src*="desktop.png"]{margin:22px 0}
+.gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:18px 0 26px}
+.gallery img{width:100%;box-shadow:0 2px 6px rgba(16,24,40,.06),0 12px 28px rgba(16,24,40,.08)}
+.cap{font-size:12px;color:var(--muted);margin-top:8px;text-align:center}
+footer{max-width:920px;margin:0 auto;padding:26px 56px 60px;font-size:12.5px;color:var(--muted)}
+@media (max-width:760px){
+  .page{padding:0 20px 50px} .hero{padding:40px 0 26px} h1{font-size:26px}
+  .gallery{grid-template-columns:1fr}
+}
+</style></head>
+<body>
+<div class="page">
+  <div class="hero">
+    <span class="eyebrow">TECH PROPOSAL · webchat v2</span>
+    <h1>给 agent 换一个大脑和一张脸</h1>
+    <p class="lead">界面按 DeepSeek / ChatGPT 的信息密度重做，会话落到本地 SQLite，运行过程全程可见。
+       仍然是一个 Termux 里能跑的单进程，零第三方依赖。</p>
+    <div class="tags">
+      <span class="tag">SQLite 会话库</span><span class="tag">三栏 + 移动抽屉</span>
+      <span class="tag">SSE 断线重连</span><span class="tag">Token 计量</span>
+      <span class="tag">纯标准库</span>
+    </div>
+  </div>
+  <blockquote>
+<p>针对三个问题：<strong>界面粗糙、没有跨会话记忆、运行信息不可见</strong>。<br />
+目标形态见 <code>prototype.html</code>（可点击原型）与 <code>shots/</code> 下渲染图。<br />
+约束：仍然跑在 Termux / 鸿蒙 Linux 虚拟机上，<strong>不引入构建链、不装第三方 Python 包</strong>，全部用标准库。</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、先把问题定位准</h2>
+<p>现在这三个毛病不是三件事，是同一件事的三个面：<code>webchat.py</code> 把「服务端状态」和「界面状态」都塞进了两个全局变量里。</p>
+<pre><code class="language-python">STATE = {&quot;msgs&quot;: [], &quot;events&quot;: [], &quot;lock&quot;: threading.Lock()}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>真实原因</th>
+<th>位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>界面丑</td>
+<td>单栏布局，只有 header + 消息流 + 输入框；没有导航、没有层级、没有信息密度</td>
+<td><code>HTML</code> 常量，全内联</td>
+</tr>
+<tr>
+<td>没有记忆</td>
+<td><code>STATE["msgs"]</code> 是进程内存，<strong>进程一退就没了</strong>；<code>/api/reset</code> 直接置空</td>
+<td>L76、L431</td>
+</tr>
+<tr>
+<td>只能一个对话</td>
+<td>全局只有一个 <code>msgs</code>，新对话 = 覆盖旧的</td>
+<td>L76、L312</td>
+</tr>
+<tr>
+<td>什么都看不到</td>
+<td>只有 header 一个 <code>sub</code> 文本，<code>done</code> 事件时才闪一下步数和耗时；token 完全没统计</td>
+<td>L798-801</td>
+</tr>
+</tbody>
+</table>
+<p>所以改造的核心不是"美化 CSS"，而是<strong>把会话变成一等公民</strong>：有了 <code>session</code> 这个实体，列表、恢复、搜索、切换、统计全都自然长出来，界面才有东西可展示。</p>
+<hr />
+<h2 id="_2">二、目标形态</h2>
+<p class="fig"><img alt="桌面端效果" src="shots/desktop.png" /></p>
+<p class="fig"><img alt="手机端效果" src="shots/mobile.png" /></p>
+<h3 id="_3">桌面（三栏）</h3>
+<pre><code>┌──────────┬──────────────────────────────┬──────────┐
+│ 会话列表  │  标题 · 模型 · 上下文 · 状态   │ 运行详情  │
+│ 264px    ├──────────────────────────────┤ 286px    │
+│          │  消息流（最大 748px 居中）      │ 上下文    │
+│ 新对话    │   ├ 思考块（折叠）             │ 进度/token│
+│ 搜索      │   ├ 工具卡（可展开输出）        │ 本轮统计  │
+│ 今天/昨天 │   ├ Markdown / 表格 / 代码块    │ 工具时间线│
+│ 更早      │   └ 消息页脚（步数·耗时·token） │ 运行环境  │
+│          ├──────────────────────────────┤          │
+│ 用户      │  输入框 + 附件/计划/模型        │ 工作目录  │
+└──────────┴──────────────────────────────┴──────────┘
+</code></pre>
+<h3 id="_4">移动端</h3>
+<p>侧栏变抽屉（左滑/点 ☰），右侧详情变底部弹层（点 📈），输入框吸底。</p>
+<div class="gallery">
+<img src="shots/mobile.png" alt="手机端对话">
+<img src="shots/mobile-drawer.png" alt="手机端会话抽屉">
+<img src="shots/mobile-inspector.png" alt="手机端运行详情">
+</div>
+<div class="cap">左：对话 · 中：会话抽屉 · 右：运行详情弹层</div>
+
+<p><strong>关键取舍</strong>：桌面用三栏是为了"信息可见"；手机屏幕装不下，所以把「运行详情」做成<strong>按需弹出的底部面板</strong>，而不是塞进消息流里。</p>
+<hr />
+<h2 id="sqlite">三、记忆层：SQLite 单文件</h2>
+<h3 id="31-sqlite">3.1 为什么是 SQLite</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JSON 文件整读整写</td>
+<td>每次追加要重写全文件；1 万条消息时每次 20MB 写入，手机上会卡</td>
+</tr>
+<tr>
+<td>内存 + 退出时落盘</td>
+<td>进程被 kill / 虚拟机重启 / 断电 → 全丢，正是现在的痛点</td>
+</tr>
+<tr>
+<td><strong>SQLite（WAL）</strong></td>
+<td>标准库 <code>sqlite3</code>，Termux 自带；单文件；单条 INSERT &lt; 1ms；支持并发读；崩溃安全</td>
+</tr>
+</tbody>
+</table>
+<p>路径：<code>~/.local/share/webchat/sessions.db</code>（跟 <code>~/.config/webchat/env</code> 分开，配置归配置、数据归数据）。</p>
+<h3 id="32">3.2 表结构</h3>
+<pre><code class="language-sql">PRAGMA journal_mode = WAL;
+PRAGMA synchronous  = NORMAL;
+PRAGMA busy_timeout = 3000;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id          TEXT PRIMARY KEY,        -- 20261119-194802-7f3a
+  title       TEXT NOT NULL,           -- 首条消息前 24 字，可改
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  pinned      INTEGER DEFAULT 0,
+  archived    INTEGER DEFAULT 0,
+  model       TEXT,
+  work        TEXT,                    -- 当时的工作目录，换目录也说得清
+  steps       INTEGER DEFAULT 0,       -- 累计工具调用次数
+  tokens_in   INTEGER DEFAULT 0,
+  tokens_out  INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  sid          TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  seq          INTEGER NOT NULL,       -- 会话内单调递增，断线续传靠它
+  role         TEXT NOT NULL,          -- system / user / assistant / tool
+  content      TEXT,
+  reasoning    TEXT,                   -- 思考内容单独存，不污染 content
+  tool_calls   TEXT,                   -- JSON 原样
+  tool_call_id TEXT,
+  name         TEXT,
+  tokens       INTEGER DEFAULT 0,
+  latency_ms   INTEGER DEFAULT 0,
+  created_at   INTEGER NOT NULL,
+  UNIQUE(sid, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_msg_sid_seq ON messages(sid, seq);
+CREATE INDEX IF NOT EXISTS idx_sess_upd    ON sessions(archived, pinned DESC, updated_at DESC);
+
+-- 搜索（FTS5 不可用时降级为 LIKE）
+CREATE VIRTUAL TABLE IF NOT EXISTS msg_fts USING fts5(
+  content, sid UNINDEXED, tokenize='unicode61'
+);
+</code></pre>
+<p><strong>三条设计要点：</strong></p>
+<ol>
+<li><strong><code>messages</code> 存 API 原样的消息对象</strong>，重启后能 1:1 还原成 <code>msgs</code> 数组直接喂给模型。不要存"渲染后的 HTML"——那就再也恢复不了上下文了。</li>
+<li><strong><code>reasoning</code> 单独一列</strong>。原因：DeepSeek 的 <code>reasoning_content</code> 不能回传给 API，混在 <code>content</code> 里会导致下一轮 400。</li>
+<li><strong><code>seq</code> 单调递增</strong>，前端增量拉取用 <code>?after_seq=120</code>，断线重连不用重拉全量。</li>
+</ol>
+<h3 id="33">3.3 写入时机（这决定数据会不会丢）</h3>
+<table>
+<thead>
+<tr>
+<th>时机</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>用户发消息</td>
+<td><code>INSERT</code> user 消息 → <code>sessions.updated_at</code></td>
+</tr>
+<tr>
+<td>流式输出中</td>
+<td><strong>不落库</strong>。delta 只在内存里拼，避免每条 token 一次写盘</td>
+</tr>
+<tr>
+<td>一轮助手回复结束</td>
+<td><code>INSERT</code> assistant 消息（含 content / reasoning / tool_calls）</td>
+</tr>
+<tr>
+<td>每次工具执行完</td>
+<td><code>INSERT</code> tool 消息 + <code>sessions.steps += 1</code></td>
+</tr>
+<tr>
+<td>进程退出 / Ctrl+C</td>
+<td><code>atexit</code> 兜底 flush 未落库的当前消息</td>
+</tr>
+</tbody>
+</table>
+<h3 id="34">3.4 崩溃后的"半条消息"——必须处理</h3>
+<p>这是最容易踩的坑。如果进程在「assistant 发了 tool_calls，但 tool 结果还没写回」时被杀，数据库里就是：</p>
+<pre><code>assistant: {tool_calls: [...]}   ← 后面没有对应的 tool 消息
+</code></pre>
+<p>下次启动直接把这串发给 API → <strong>400 Bad Request</strong>，会话就永久打不开了。</p>
+<p>启动时（或打开会话时）做一次修复：</p>
+<pre><code class="language-python">def repair(sid):
+    rows = db.execute(&quot;SELECT role, tool_calls, tool_call_id FROM messages &quot;
+                      &quot;WHERE sid=? ORDER BY seq DESC LIMIT 1&quot;, (sid,)).fetchone()
+    if not rows:
+        return
+    role, tcs, _ = rows
+    if role == &quot;assistant&quot; and tcs:
+        for tc in json.loads(tcs):
+            db.execute(&quot;INSERT INTO messages(sid,seq,role,tool_call_id,content,created_at) &quot;
+                       &quot;VALUES(?,?,?,?,?,?)&quot;,
+                       (sid, next_seq(sid), &quot;tool&quot;, tc[&quot;id&quot;],
+                        &quot;（任务被中断，没有拿到结果）&quot;, int(time.time())))
+</code></pre>
+<p>前端同时在这一条上标一个"已中断"的灰条，用户点"继续"就能接着跑。</p>
+<h3 id="35">3.5 上下文恢复与压缩</h3>
+<ul>
+<li><strong>恢复</strong>：打开会话 → <code>SELECT ... ORDER BY seq</code> → 拼成 <code>msgs</code> → 直接可继续对话，模型"记得"之前聊了什么。</li>
+<li><strong>压缩</strong>（二期）：<code>messages</code> 超过 60 条或估算 token 超过模型上限 70% 时，把最老的一半交给模型总结成一段 <code>system</code> 摘要，存进 <code>sessions.summary</code>；发送时用「摘要 + 最近 30 条」替代全量。原始消息仍留在库里，只是不参与请求。</li>
+</ul>
+<h3 id="36">3.6 旧数据迁移</h3>
+<p>老版本没有库。加一次性逻辑：启动时若发现 <code>sessions.db</code> 不存在且内存/旧 dump 里有消息，写一条 <code>session</code> + 若干 <code>message</code>，标题取首条 user 消息前 24 字。跑一次就够，之后不再触发。</p>
+<hr />
+<h2 id="api">四、后端 API</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路径</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/sessions?q=&amp;limit=50</code></td>
+<td>会话列表，按 pinned、updated_at 排序；<code>q</code> 走 FTS</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/sessions</code></td>
+<td>新建，返回 <code>{id,title}</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/sessions/{id}</code></td>
+<td>改标题 / 置顶 / 归档</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/sessions/{id}</code></td>
+<td>删除（级联删消息）</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/sessions/{id}/messages?after_seq=0</code></td>
+<td>拉消息，支持增量</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/sessions/{id}/chat</code></td>
+<td>发消息，返回 SSE</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/sessions/{id}/stop</code></td>
+<td>中止当前任务</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/sessions/{id}/stats</code></td>
+<td>上下文占用、步数、token、工具时间线</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/health</code></td>
+<td>版本、模型、工作目录、库大小</td>
+</tr>
+</tbody>
+</table>
+<h3 id="41-sse">4.1 SSE 事件协议（在现有基础上扩充）</h3>
+<pre><code>user      {v}                      用户消息回显
+think     {v}                      思考增量
+delta     {v}                      正文增量
+tool      {id,name,args}           工具开始
+tool_end  {id,out,ms,ok}           工具结束（新增 ok）
+usage     {in,out,total}           本轮 token（新增）
+title     {v}                      自动标题（新增）
+done      {steps,turns,ms,hit_limit,stopped}
+error     {v}
+</code></pre>
+<p><code>usage</code> 的来源：DeepSeek 兼容 OpenAI 的流式用量，请求体加</p>
+<pre><code class="language-python">&quot;stream_options&quot;: {&quot;include_usage&quot;: True}
+</code></pre>
+<p>最后一个 chunk 会带 <code>usage: {prompt_tokens, completion_tokens}</code>。拿不到时用估算兜底：</p>
+<pre><code class="language-python">def est_tokens(s):
+    cjk = sum(1 for ch in s if '\u4e00' &lt;= ch &lt;= '\u9fff')
+    return int(cjk * 1.05 + (len(s) - cjk) / 3.6)
+</code></pre>
+<h3 id="42">4.2 断线重连（刷新页面不丢正在跑的任务）</h3>
+<p>现在的问题：任务在后台跑，前端一刷新就白屏，只能等它跑完再点历史。</p>
+<p>做法：<strong>每个会话一个事件环形缓冲 + 自增 seq</strong>。</p>
+<pre><code class="language-python">class Bus:
+    def __init__(self):
+        self.seq = 0
+        self.buf = collections.deque(maxlen=3000)
+        self.subs = []
+        self.lock = threading.Lock()
+
+    def pub(self, ev):
+        with self.lock:
+            self.seq += 1
+            ev[&quot;seq&quot;] = self.seq
+            self.buf.append(ev)
+            subs = list(self.subs)
+        for q in subs:
+            q.put(ev)
+</code></pre>
+<ul>
+<li>前端发 <code>GET /api/sessions/{id}/stream?last_seq=1200</code>，服务端先把 <code>buf</code> 里 <code>seq &gt; 1200</code> 的重放，再挂上订阅。</li>
+<li>SSE 带 <code>id: {seq}</code>，浏览器 EventSource 自动带 <code>Last-Event-ID</code>。</li>
+<li>页面加载时先拉 <code>stats</code> 判断 <code>running</code>，是则自动接流。</li>
+</ul>
+<p>这一步做完，"手机上锁屏再打开，任务还在跑"就是自然结果。</p>
+<h3 id="43">4.3 并发与中止</h3>
+<ul>
+<li>同一 <code>sid</code> 同时只允许一个 run，重复请求返回 <code>409</code>，前端提示"当前会话正在运行"。</li>
+<li>不同 <code>sid</code> 可并发（<code>ThreadingHTTPServer</code> 天然支持），但共享工作目录，写文件可能打架——方案里约定 agent 单任务串行，跨会话并发只读。</li>
+<li><code>stop</code>：置 <code>threading.Event</code>，agent 循环每步 <code>if stop.is_set(): break</code>，收尾发 <code>done{stopped:true}</code>，并把已产生的部分回复落库。</li>
+</ul>
+<hr />
+<h2 id="_5">五、前端重构</h2>
+<h3 id="51">5.1 文件组织：从单文件拆成四个</h3>
+<p>现在 <code>webchat.py</code> 已经 39KB，再把新界面塞进去会破 80KB，改一行要在 HTML 字符串里翻半天。</p>
+<pre><code>webchat.py        # 服务 + agent 循环（约 25KB）
+static/app.html   # 结构（约 6KB）
+static/app.css    # 样式（约 12KB）
+static/app.js     # 逻辑（约 18KB）
+</code></pre>
+<p><code>webchat.py</code> 里加一个静态文件服务（读不到就用内置兜底，保证单文件也能跑）。<code>update.sh</code> 的 <code>FILES</code> 加三行即可，它本来就是逐文件比对下载。</p>
+<p>如果坚持单文件：把 <code>HTML</code> 改成 <code>render_index()</code>，用 <code>%s</code> 注入 CSS/JS 三段常量，至少代码分区清楚。</p>
+<h3 id="52-deepseek-chatgpt">5.2 视觉规范（对齐 DeepSeek / ChatGPT 的观感）</h3>
+<p>不做花哨设计，靠<strong>克制</strong>取胜：</p>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主色</td>
+<td><code>#4d6bfe</code>（只用于：发送键、选中态、链接、运行中脉冲点）</td>
+</tr>
+<tr>
+<td>背景</td>
+<td>主区 <code>#fff</code>，侧栏 <code>#fafafb</code>，卡片 <code>#fff</code> + 1px 边框</td>
+</tr>
+<tr>
+<td>圆角</td>
+<td>气泡 14px（右下角 4px 制造方向感）、卡片 11px、按钮 9px</td>
+</tr>
+<tr>
+<td>字号</td>
+<td>正文 15/1.72，元信息 11，工具名 12 等宽</td>
+</tr>
+<tr>
+<td>阴影</td>
+<td>只有输入框有：<code>0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.05)</code></td>
+</tr>
+<tr>
+<td>助手消息</td>
+<td><strong>不要气泡</strong>，直接文本贴底（ChatGPT/Claude 风格，长文更好读）</td>
+</tr>
+<tr>
+<td>用户消息</td>
+<td>浅蓝气泡 <code>#f2f4ff</code> + <code>#e6e9fb</code> 边，右对齐</td>
+</tr>
+<tr>
+<td>深色</td>
+<td><code>prefers-color-scheme</code> 自动切换，<code>color-scheme: light dark</code> 一并声明</td>
+</tr>
+</tbody>
+</table>
+<h3 id="53">5.3 组件行为</h3>
+<p><strong>思考块</strong>：默认折叠，只显示「已思考 2.4s」；运行中自动展开，结束后自动收起（可手动固定展开）。</p>
+<p><strong>工具卡</strong>：一行显示 <code>工具名 + 参数摘要 + 耗时 + 状态</code>。
+- 运行中：左侧转圈，整卡半透明
+- 成功：绿色 ✓，点击展开输出
+- 失败：红色 ✕，<strong>默认自动展开</strong>（错误必须一眼看到）
+- 同类连续调用合并成一组（如连续 5 次 <code>read_file</code> 折叠成「读取 5 个文件」）</p>
+<p><strong>消息页脚</strong>：<code>4 步 · 18.6s · 2,180 tokens</code>，hover 出现「复制 / 重新生成 / 分支」。移动端常驻显示。</p>
+<p><strong>输入框</strong>：<code>Enter</code> 发送、<code>Shift+Enter</code> 换行（现在的实现有 <code>isComposing</code> 判断，保留，中文输入法不会误发）；上方一行常驻提示：工作目录、单轮步数上限、快捷键。</p>
+<h3 id="54">5.4 渲染性能</h3>
+<p>现在的 <code>flush()</code> 每帧 <code>cur.innerHTML = md(curRaw)</code>——长回复时每帧重排整段 Markdown，手机上会掉帧。</p>
+<p>改成：
+1. 流式期间只 <code>appendChild(document.createTextNode(chunk))</code>，纯文本，零重排；
+2. 收到 <code>done</code> 或遇到 ``` 代码块边界时才渲染一次 Markdown；
+3. 历史消息超过 60 条时只渲染最近 60 条 + 顶部「加载更早」按钮。</p>
+<h3 id="55-markdown">5.5 Markdown 补强</h3>
+<p>现有 <code>md()</code> 缺三样：<strong>代码块语言标签、复制按钮、嵌套列表</strong>。</p>
+<p>代码块外面包一层 <code>.codewrap</code>：</p>
+<pre><code class="language-html">&lt;div class=&quot;codewrap&quot;&gt;
+  &lt;div class=&quot;codehead&quot;&gt;&lt;span class=&quot;lg&quot;&gt;sh&lt;/span&gt;
+    &lt;button data-code=&quot;...&quot;&gt;复制&lt;/button&gt;&lt;/div&gt;
+  &lt;pre&gt;&lt;code&gt;...&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+</code></pre>
+<p>复制用 <code>navigator.clipboard.writeText</code>，失败降级 <code>document.execCommand('copy')</code>（Termux 的 WebView 有时不给 clipboard 权限）。</p>
+<hr />
+<h2 id="token">六、token 与成本可见</h2>
+<p>用户抱怨"什么信息都看不到"，本质是<strong>不知道这次任务花了多少</strong>。三个层级：</p>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>展示位置</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单条回复</td>
+<td>消息页脚</td>
+<td>这次回复几步、多久、多少 token</td>
+</tr>
+<tr>
+<td>单轮任务</td>
+<td>顶部 chip + 右侧面板</td>
+<td>累计步数、总耗时、输入/输出 token</td>
+</tr>
+<tr>
+<td>整个会话</td>
+<td>右侧「上下文」卡</td>
+<td>已用 / 上限、百分比进度条、按当前速度还能聊多少轮</td>
+</tr>
+</tbody>
+</table>
+<p>估算值要标"≈"，真实值来自 <code>usage</code> 事件；两者偏差超过 20% 时用真实值校准系数并写回配置。</p>
+<hr />
+<h2 id="_6">七、分阶段落地</h2>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>内容</th>
+<th>工时</th>
+<th>可独立验收</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>P0</strong></td>
+<td>SQLite 存储 + 会话 CRUD API + 侧栏列表 + 顶部信息条 + token 统计</td>
+<td>4-6h</td>
+<td>重启进程，历史还在；能切会话</td>
+</tr>
+<tr>
+<td><strong>P1</strong></td>
+<td>三栏布局 + 工具卡/思考块/消息页脚 + 右侧详情 + 深色 + 移动端抽屉</td>
+<td>1d</td>
+<td>界面对齐原型图</td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td>断线重连 + stop + 自动标题 + 搜索 + 导出 md</td>
+<td>4-6h</td>
+<td>跑任务时刷新页面，流继续</td>
+</tr>
+<tr>
+<td><strong>P3</strong></td>
+<td>上下文压缩、重新生成/分支、多模型切换</td>
+<td>1d</td>
+<td>长会话不爆上下文</td>
+</tr>
+</tbody>
+</table>
+<p>P0 做完就已经解决"没有记忆"，P1 解决"丑和看不见"，两者可并行（一个人改后端、一个人改前端，接口按第四节对齐）。</p>
+<hr />
+<h2 id="_7">八、风险与注意</h2>
+<ol>
+<li><strong>会话库 = 全部历史命令</strong>。<code>webchat.py</code> 本来就没有鉴权，现在等于把"你在这台机器上干过的所有事"也存下来了。<code>--host 0.0.0.0</code> 时同网段任何人可读。<strong>建议 P1 一并加一个简单 token</strong>：启动时生成随机串写进 <code>~/.config/webchat/env</code>，前端 URL 带 <code>?k=</code>，或校验 Cookie；不带则 401。</li>
+<li><strong>SQLite 并发</strong>：单写多读没问题，但必须 <code>WAL + busy_timeout</code>，否则两个浏览器标签同时写会 <code>database is locked</code>。</li>
+<li><strong>FTS5 可能不可用</strong>：部分 Android 自带的 SQLite 没编 FTS5。启动时 <code>CREATE VIRTUAL TABLE</code> 失败就 catch，搜索降级成 <code>LIKE '%q%'</code>（数据量小，够用）。</li>
+<li><strong>磁盘</strong>：单条消息平均 2KB，1 万条约 20MB。加一个"清理 90 天前归档会话"的定时任务即可。</li>
+<li><strong><code>--mock</code> 模式要跟着改</strong>：现在 mock 只造两轮假数据，新前端要能展示工具卡/思考块/统计，mock 得造完整事件序列，否则没 key 时看不到界面效果。</li>
+<li><strong>别把 <code>seq</code> 做成全局自增</strong>。必须是会话内自增，否则切换会话后 <code>after_seq</code> 全乱。</li>
+</ol>
+<hr />
+<h2 id="_8">九、验收清单</h2>
+<ul>
+<li class="todo"><span class="cb"></span>关掉进程、重启虚拟机，打开页面仍是上次的会话，且能接着聊</li>
+<li class="todo"><span class="cb"></span>左侧有会话列表，按今天/昨天/更早分组，点一下切换，上下文不串</li>
+<li class="todo"><span class="cb"></span>搜索"apk"，能命中三天前那次会话</li>
+<li class="todo"><span class="cb"></span>长任务跑到第 12 步时刷新页面，进度条和输出接着走，不中断</li>
+<li class="todo"><span class="cb"></span>每条回复下面能看到步数 / 耗时 / token</li>
+<li class="todo"><span class="cb"></span>右侧面板显示上下文占用百分比，超过 70% 变黄</li>
+<li class="todo"><span class="cb"></span>工具执行失败时卡片自动展开并标红</li>
+<li class="todo"><span class="cb"></span>手机上侧栏是抽屉，详情是底部弹层，输入框不遮挡最后一条消息</li>
+<li class="todo"><span class="cb"></span>深色模式跟随系统，代码块和表格对比度正常</li>
+</ul>
+</div>
+<footer>渲染图由 prototype.html 实际渲染，非设计稿；原型可直接在浏览器打开点击。</footer>
+</body></html>

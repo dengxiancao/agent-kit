@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-webchat.py - 给 agent 加一个本地图形界面（单文件，纯标准库）
+webchat.py - agent 的本地图形界面（v2：会话持久化 + 三栏界面）
 
 用法:
   export DEEPSEEK_KEY=sk-xxxx        # 只对当前会话有效
@@ -14,22 +14,32 @@ webchat.py - 给 agent 加一个本地图形界面（单文件，纯标准库）
 
   python3 webchat.py --port 9000
   python3 webchat.py --mock          # 无 key 也能看界面（假对话）
+  python3 webchat.py --no-db         # 不落盘，退回旧的单会话内存模式
 
-手机浏览器打开 http://127.0.0.1:8765 即可。
+数据都存在 ~/.local/share/webchat/sessions.db（可用 WEBCHAT_DB 改）。
+
 只监听 127.0.0.1，同一 WiFi 下的其他人访问不到。
 """
 
 import os
+import re
 import sys
 import json
 import time
+import uuid
 import shlex
+import sqlite3
 import argparse
 import threading
 import subprocess
+import queue
 import urllib.request
 import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
+
+
+# ------------------------------------------------------------------ 配置
 
 def load_env_file(path=None):
     """读 KEY=VALUE 文件补进环境变量，已设置的不覆盖。
@@ -62,6 +72,9 @@ def load_env_file(path=None):
 
 ENV_FILE = load_env_file()
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+STATIC = os.path.join(HERE, "static")
+
 WORK = os.path.abspath(os.path.expanduser(os.environ.get("AGENT_WORK", "~/work")))
 API_KEY = os.environ.get("DEEPSEEK_KEY", "")
 API_URL = os.environ.get("DEEPSEEK_URL", "https://api.deepseek.com/chat/completions")
@@ -71,11 +84,365 @@ MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 MAX_TURNS = int(os.environ.get("AGENT_MAX_TURNS", "100"))
 HOST = os.environ.get("WEBCHAT_HOST") or os.environ.get("HOST") or "127.0.0.1"
 PORT = int(os.environ.get("PORT", "8765"))
+DB_PATH = os.path.expanduser(os.environ.get("WEBCHAT_DB", "~/.local/share/webchat/sessions.db"))
 MOCK = False
+USE_DB = True
 
-STATE = {"msgs": [], "events": [], "lock": threading.Lock()}
-EVENTS_MAX = 600
-EVLOCK = threading.Lock()
+
+# ------------------------------------------------------------------ 存储层
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS sessions (
+  id          TEXT PRIMARY KEY,
+  title       TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  pinned      INTEGER DEFAULT 0,
+  archived    INTEGER DEFAULT 0,
+  model       TEXT,
+  work        TEXT,
+  steps       INTEGER DEFAULT 0,
+  tokens_in   INTEGER DEFAULT 0,
+  tokens_out  INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  sid          TEXT NOT NULL,
+  seq          INTEGER NOT NULL,
+  role         TEXT NOT NULL,
+  content      TEXT,
+  reasoning    TEXT,
+  tool_calls   TEXT,
+  tool_call_id TEXT,
+  name         TEXT,
+  meta         TEXT,
+  created_at   INTEGER NOT NULL,
+  UNIQUE(sid, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_msg_sid_seq ON messages(sid, seq);
+CREATE INDEX IF NOT EXISTS idx_sess_upd    ON sessions(archived, pinned DESC, updated_at DESC);
+"""
+
+FTS_SCHEMA = """
+CREATE VIRTUAL TABLE IF NOT EXISTS msg_fts USING fts5(
+  content, sid UNINDEXED, tokenize='unicode61'
+);
+CREATE TRIGGER IF NOT EXISTS msg_ai AFTER INSERT ON messages BEGIN
+  INSERT INTO msg_fts(rowid, content, sid) VALUES (new.id, new.content, new.sid);
+END;
+CREATE TRIGGER IF NOT EXISTS msg_ad AFTER DELETE ON messages BEGIN
+  DELETE FROM msg_fts WHERE rowid = old.id;
+END;
+"""
+
+
+def new_sid():
+    return time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
+
+
+def now():
+    return int(time.time())
+
+
+class Store:
+    """会话与消息的持久化。单连接 + 锁，够用且不会 database is locked。"""
+
+    def __init__(self, path):
+        self.path = path
+        d = os.path.dirname(path) if path != ":memory:" else ""
+        if d:
+            os.makedirs(d, exist_ok=True)
+        self.lock = threading.RLock()
+        self.repaired = set()
+        self.con = sqlite3.connect(path, check_same_thread=False, timeout=10)
+        self.con.row_factory = sqlite3.Row
+        with self.lock:
+            self.con.execute("PRAGMA journal_mode=WAL")
+            self.con.execute("PRAGMA synchronous=NORMAL")
+            self.con.execute("PRAGMA busy_timeout=5000")
+            self.con.executescript(SCHEMA)
+            try:
+                self.con.executescript(FTS_SCHEMA)
+                self.fts = True
+            except sqlite3.Error:
+                self.fts = False
+            self.con.commit()
+
+    # ---------- 会话 ----------
+    def create(self, title="新对话"):
+        sid = new_sid()
+        t = now()
+        with self.lock:
+            self.con.execute(
+                "INSERT INTO sessions(id,title,created_at,updated_at,model,work) "
+                "VALUES(?,?,?,?,?,?)", (sid, title, t, t, MODEL, WORK))
+            self.con.commit()
+        return sid
+
+    def list(self, q=None, limit=200):
+        with self.lock:
+            if q:
+                like = "%" + q.replace("%", "").replace("_", "") + "%"
+                rows = self.con.execute(
+                    "SELECT DISTINCT s.* FROM sessions s "
+                    "LEFT JOIN messages m ON m.sid = s.id "
+                    "WHERE s.archived = 0 AND (s.title LIKE ? OR m.content LIKE ?) "
+                    "ORDER BY s.pinned DESC, s.updated_at DESC LIMIT ?",
+                    (like, like, limit)).fetchall()
+            else:
+                rows = self.con.execute(
+                    "SELECT * FROM sessions WHERE archived = 0 "
+                    "ORDER BY pinned DESC, updated_at DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get(self, sid):
+        with self.lock:
+            r = self.con.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()
+        return dict(r) if r else None
+
+    def update(self, sid, **kw):
+        allow = {"title", "pinned", "archived", "model", "work",
+                 "steps", "tokens_in", "tokens_out", "updated_at"}
+        sets, vals = [], []
+        for k, v in kw.items():
+            if k in allow:
+                sets.append(k + "=?")
+                vals.append(v)
+        if not sets:
+            return
+        vals.append(sid)
+        with self.lock:
+            self.con.execute("UPDATE sessions SET " + ",".join(sets) + " WHERE id=?", vals)
+            self.con.commit()
+
+    def delete(self, sid):
+        with self.lock:
+            self.con.execute("DELETE FROM messages WHERE sid=?", (sid,))
+            self.con.execute("DELETE FROM sessions WHERE id=?", (sid,))
+            self.con.commit()
+
+    def bump(self, sid, **delta):
+        """累加统计字段。"""
+        with self.lock:
+            self.con.execute(
+                "UPDATE sessions SET updated_at=?, steps=steps+?, "
+                "tokens_in=tokens_in+?, tokens_out=tokens_out+? WHERE id=?",
+                (now(), delta.get("steps", 0), delta.get("tokens_in", 0),
+                 delta.get("tokens_out", 0), sid))
+            self.con.commit()
+
+    # ---------- 消息 ----------
+    def _seq(self, sid):
+        r = self.con.execute("SELECT COALESCE(MAX(seq),0) FROM messages WHERE sid=?", (sid,)).fetchone()
+        return int(r[0]) + 1
+
+    def add(self, sid, role, content=None, reasoning=None, tool_calls=None,
+            tool_call_id=None, name=None, meta=None):
+        with self.lock:
+            if not self.con.execute("SELECT 1 FROM sessions WHERE id=?", (sid,)).fetchone():
+                return -1, -1
+            seq = self._seq(sid)
+            t = now()
+            cur = self.con.execute(
+                "INSERT INTO messages(sid,seq,role,content,reasoning,tool_calls,"
+                "tool_call_id,name,meta,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (sid, seq, role, content, reasoning,
+                 json.dumps(tool_calls, ensure_ascii=False) if tool_calls else None,
+                 tool_call_id, name,
+                 json.dumps(meta, ensure_ascii=False) if meta else None, t))
+            self.con.commit()
+            return seq, cur.lastrowid
+
+    def messages(self, sid, after_seq=0, limit=None):
+        with self.lock:
+            sql = ("SELECT * FROM messages WHERE sid=? AND seq>? ORDER BY seq"
+                   + (" LIMIT %d" % limit if limit else ""))
+            rows = self.con.execute(sql, (sid, after_seq)).fetchall()
+        return [dict(r) for r in rows]
+
+    def context(self, sid, limit=120):
+        """还原成可以直接送 API 的 messages 数组。"""
+        self.repair(sid)
+        rows = self.messages(sid)
+        if limit and len(rows) > limit:
+            rows = rows[-limit:]
+            while rows and rows[0]["role"] != "user":
+                rows.pop(0)
+        out = [{"role": "system", "content": SYSTEM}]
+        for r in rows:
+            role = r["role"]
+            if role == "user":
+                out.append({"role": "user", "content": r["content"] or ""})
+            elif role == "assistant":
+                m = {"role": "assistant", "content": r["content"] or None}
+                if r["tool_calls"]:
+                    m["tool_calls"] = json.loads(r["tool_calls"])
+                if m["content"] or m.get("tool_calls"):
+                    out.append(m)
+            elif role == "tool":
+                out.append({"role": "tool", "tool_call_id": r["tool_call_id"],
+                            "content": r["content"] or ""})
+        return out
+
+    def repair(self, sid):
+        """补掉崩溃时留下的半条消息：assistant 有 tool_calls，但 tool 结果没写回。
+        不补的话，下次把这段发出去必定 400。"""
+        if sid in self.repaired:
+            return
+        self.repaired.add(sid)
+        with self.lock:
+            r = self.con.execute(
+                "SELECT * FROM messages WHERE sid=? AND role='assistant' "
+                "AND tool_calls IS NOT NULL ORDER BY seq DESC LIMIT 1", (sid,)).fetchone()
+            if not r:
+                return
+            try:
+                tcs = json.loads(r["tool_calls"])
+            except Exception:
+                return
+            have = {x[0] for x in self.con.execute(
+                "SELECT tool_call_id FROM messages WHERE sid=? AND role='tool' "
+                "AND seq>?", (sid, r["seq"])).fetchall()}
+            for tc in tcs:
+                tid = tc.get("id") or ""
+                if tid and tid not in have:
+                    seq = self._seq(sid)
+                    self.con.execute(
+                        "INSERT INTO messages(sid,seq,role,content,tool_call_id,created_at) "
+                        "VALUES(?,?,?,?,?,?)",
+                        (sid, seq, "tool", "（任务被中断，没有拿到结果）", tid, now()))
+            self.con.commit()
+
+    def first_tool_of(self, sid):
+        """给会话列表显示摘要用。"""
+        with self.lock:
+            r = self.con.execute(
+                "SELECT content FROM messages WHERE sid=? AND role='user' "
+                "ORDER BY seq LIMIT 1", (sid,)).fetchone()
+        return (r[0] or "") if r else ""
+
+    def stats(self, sid):
+        with self.lock:
+            s = self.get(sid)
+            rows = self.con.execute(
+                "SELECT role, name, meta, content, reasoning FROM messages WHERE sid=?",
+                (sid,)).fetchall()
+        chars = sum(len(r["content"] or "") + len(r["reasoning"] or "") for r in rows)
+        ctx = sum(est_tokens(r["content"] or "") + est_tokens(r["reasoning"] or "")
+                  for r in rows)
+        tools = [dict(r) for r in rows if r["role"] == "tool"]
+        msgs = len([r for r in rows if r["role"] in ("user", "assistant")])
+        return {
+            "id": sid,
+            "messages": msgs,
+            "chars": chars,
+            "ctx": ctx,
+            "tokens": s["tokens_in"] + s["tokens_out"] if s else 0,
+            "tokens_in": s["tokens_in"] if s else 0,
+            "tokens_out": s["tokens_out"] if s else 0,
+            "steps": s["steps"] if s else 0,
+            "tools": [{"name": t["name"], "meta": json.loads(t["meta"]) if t["meta"] else {}}
+                      for t in tools][-8:],
+            "work": s["work"] if s else WORK,
+            "model": s["model"] if s else MODEL,
+        }
+
+    def size(self):
+        try:
+            n = 0
+            for suffix in ("", "-wal", "-shm"):
+                p = self.path + suffix
+                if os.path.exists(p):
+                    n += os.path.getsize(p)
+            return n
+        except OSError:
+            return 0
+
+
+# ------------------------------------------------------------------ 事件总线
+
+class Bus:
+    """一个会话一条事件流。带自增 seq + 环形缓冲，刷新页面能接上正在跑的任务。"""
+
+    def __init__(self, sid):
+        self.sid = sid
+        self.seq = 0
+        self.buf = []
+        self.subs = []
+        self.lock = threading.Lock()
+        self.closed = False
+
+    def reset(self):
+        with self.lock:
+            self.seq = 0
+            self.buf = []
+
+    def pub(self, ev):
+        with self.lock:
+            self.seq += 1
+            ev["seq"] = self.seq
+            self.buf.append(ev)
+            if len(self.buf) > 2000:
+                del self.buf[:500]
+            subs = list(self.subs)
+        for q in subs:
+            try:
+                q.put_nowait(ev)
+            except queue.Full:
+                pass
+
+    def after(self, seq):
+        with self.lock:
+            return [e for e in self.buf if e.get("seq", 0) > seq]
+
+    def subscribe(self):
+        q = queue.Queue(maxsize=4000)
+        with self.lock:
+            self.subs.append(q)
+        return q
+
+    def unsubscribe(self, q):
+        with self.lock:
+            if q in self.subs:
+                self.subs.remove(q)
+
+    def close(self):
+        with self.lock:
+            self.closed = True
+            subs = list(self.subs)
+        for q in subs:
+            try:
+                q.put_nowait({"t": "__close__"})
+            except queue.Full:
+                pass
+
+
+BUSES = {}
+BUSES_LOCK = threading.Lock()
+RUNNING = {}          # sid -> {"stop": Event, "started": ts, "bus": Bus}
+RUN_LOCK = threading.Lock()
+MAX_BUSES = 8
+
+
+def get_bus(sid):
+    with BUSES_LOCK:
+        b = BUSES.get(sid)
+        if b is None:
+            if len(BUSES) >= MAX_BUSES:
+                for k in list(BUSES.keys()):
+                    if k not in RUNNING:
+                        BUSES.pop(k, None)
+                        break
+            b = Bus(sid)
+            BUSES[sid] = b
+        return b
+
+
+def is_running(sid):
+    with RUN_LOCK:
+        return sid in RUNNING
 
 
 # ------------------------------------------------------------------ 工具实现
@@ -202,6 +569,7 @@ TOOLS = [
                        "required": ["action", "path"]}}},
 ]
 
+
 def build_system(work):
     return (
         "你是运行在用户手机 Termux 里的本地助手。\n\n"
@@ -232,6 +600,7 @@ SYSTEM = build_system(WORK)
 def stream_chat(msgs):
     body = json.dumps({"model": MODEL, "messages": msgs, "tools": TOOLS,
                        "tool_choice": "auto", "stream": True,
+                       "stream_options": {"include_usage": True},
                        "temperature": 0.3}, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(API_URL, data=body, headers={
         "Content-Type": "application/json",
@@ -257,33 +626,44 @@ def stream_chat(msgs):
             obj = json.loads(data)
         except Exception:
             continue
+        if obj.get("usage"):
+            yield {"__usage__": obj["usage"]}
         ch = (obj.get("choices") or [{}])[0]
         d = ch.get("delta") or {}
         if d:
             yield d
 
 
+def est_tokens(s):
+    if not s:
+        return 0
+    cjk = sum(1 for ch in s if '\u4e00' <= ch <= '\u9fff')
+    return int(cjk * 1.05 + (len(s) - cjk) / 3.6)
+
+
 def mock_chat(msgs):
-    """无 API key 时演示界面用"""
-    last = msgs[-1].get("content", "")
-    has_tool = any(m.get("role") == "tool" for m in msgs[-2:])
-    if not has_tool:
-        yield {"reasoning_content": "先看看工作目录里有什么"}
-        for ch in "我先看一下工作目录里的文件，再决定怎么处理。":
-            time.sleep(0.025)
+    """无 API key 时演示界面用，走完整的事件序列（思考 / 工具 / 正文 / 用量）。"""
+    last = msgs[-1] if msgs else {}
+    if last.get("role") == "tool":
+        yield {"reasoning_content": "拿到输出了，整理成结论"}
+        text = ("目录如下。给它做点事的话，直接说就行：\n\n"
+                "| 文件 | 说明 |\n|---|---|\n"
+                "| `rev.py` | 逆向侦察工具 |\n"
+                "| `adui.py` | 安卓控屏 |\n"
+                "| `ocr.py` | 本地 OCR |\n\n"
+                "比如：\n\n```sh\npython3 rev.py apk downloads/wechat.apk\n```\n\n"
+                "要我直接跑吗？")
+        for ch in text:
+            time.sleep(0.008)
             yield {"content": ch}
-        yield {"tool_calls": [{"index": 0, "id": "call_mock",
-                               "function": {"name": "list_dir", "arguments": '{"path":"."}'}}]}
+        yield {"__usage__": {"prompt_tokens": 1180, "completion_tokens": 86}}
         return
-    text = ("目录里有这几个东西。给你整理一下：\n\n"
-            "| 文件 | 说明 |\n|---|---|\n"
-            "| `rev.py` | 逆向侦察工具 |\n"
-            "| `agent.py` | 原来的命令行 agent |\n\n"
-            "启动方式：\n\n```sh\npython3 webchat.py --port 8765\n```\n\n"
-            "然后在手机浏览器打开 **http://127.0.0.1:8765** 就能用了。")
-    for ch in text:
-        time.sleep(0.012)
+    yield {"reasoning_content": "先看看工作目录里有什么，再决定怎么处理。"}
+    for ch in "我先看一下工作目录里的文件，再决定怎么处理。":
+        time.sleep(0.02)
         yield {"content": ch}
+    yield {"tool_calls": [{"index": 0, "id": "call_mock_" + uuid.uuid4().hex[:6],
+                           "function": {"name": "list_dir", "arguments": '{"path":"."}'}}]}
 
 
 # ------------------------------------------------------------------ agent 循环
@@ -298,36 +678,61 @@ def trim(msgs, keep=60):
         msgs[1:] = msgs[start:]
 
 
-def log_event(ev):
-    with EVLOCK:
-        evs = STATE["events"]
-        if ev.get("t") == "delta" and evs and evs[-1].get("t") == "delta":
-            evs[-1]["v"] += ev["v"]
-        else:
-            evs.append(ev)
-        if len(evs) > EVENTS_MAX:
-            del evs[:200]
+def make_title(text):
+    t = re.sub(r"\s+", " ", (text or "").strip())
+    t = t.strip("，。,.!?！？：: ")
+    return (t[:24] + "…") if len(t) > 24 else (t or "新对话")
 
 
-def run_agent(user_text, emit):
-    msgs = STATE["msgs"]
-    if not msgs:
-        msgs.append({"role": "system", "content": SYSTEM})
+def run_agent(sid, user_text, bus, stop_ev):
+    """跑一轮：把每条消息写库，把每个事件发到 bus。客户端断开也不影响它跑完。"""
+    emit = bus.pub
+    msgs = STORE.context(sid) if STORE else [{"role": "system", "content": SYSTEM}]
     emit({"t": "user", "v": user_text})
-    msgs.append({"role": "user", "content": user_text})
+
     steps = 0
     turns = 0
+    t_start = time.time()
+    used_in = used_out = 0
+    all_text = ""
     finished = False
+    think_acc = ""
+
+    if STORE:
+        STORE.add(sid, "user", content=user_text)
+        msgs.append({"role": "user", "content": user_text})
+        s = STORE.get(sid)
+        if s and (not s["title"] or s["title"] == "新对话"):
+            title = make_title(user_text)
+            STORE.update(sid, title=title, updated_at=now())
+            emit({"t": "title", "v": title})
+    else:
+        msgs.append({"role": "user", "content": user_text})
+
     gen = mock_chat if MOCK else stream_chat
 
     for turn in range(MAX_TURNS):
+        if stop_ev.is_set():
+            break
         turns = turn + 1
         text_acc = ""
         calls = {}
         order = []
+        turn_in = turn_out = 0
+
         for d in gen(msgs):
+            if stop_ev.is_set():
+                break
+            if "__usage__" in d:
+                u = d["__usage__"] or {}
+                turn_in = u.get("prompt_tokens") or 0
+                turn_out = u.get("completion_tokens") or 0
+                used_in, used_out = turn_in, turn_out
+                emit({"t": "usage", "in": turn_in, "out": turn_out})
+                continue
             rc = d.get("reasoning_content")
             if rc:
+                think_acc += rc
                 emit({"t": "think", "v": rc})
             c = d.get("content")
             if c:
@@ -346,8 +751,15 @@ def run_agent(user_text, emit):
                 if tc.get("id"):
                     calls[i]["id"] = tc["id"]
 
+        all_text += text_acc
         if not calls:
-            msgs.append({"role": "assistant", "content": text_acc})
+            if text_acc:
+                if STORE:
+                    STORE.add(sid, "assistant", content=text_acc,
+                              reasoning=think_acc or None,
+                              meta={"steps": 0, "ms": int((time.time() - t_start) * 1000),
+                                    "tokens": turn_out or est_tokens(text_acc)})
+                msgs.append({"role": "assistant", "content": text_acc})
             finished = True
             break
 
@@ -357,8 +769,14 @@ def run_agent(user_text, emit):
             tcs.append({"id": c["id"] or ("call_%d_%d" % (turn, i)), "type": "function",
                         "function": {"name": c["name"], "arguments": c["args"] or "{}"}})
         msgs.append({"role": "assistant", "content": text_acc or None, "tool_calls": tcs})
+        if STORE:
+            STORE.add(sid, "assistant", content=text_acc or None,
+                      reasoning=think_acc or None, tool_calls=tcs)
+        think_acc = ""
 
         for tc in tcs:
+            if stop_ev.is_set():
+                break
             fn = tc["function"]
             try:
                 args = json.loads(fn["arguments"] or "{}")
@@ -367,30 +785,84 @@ def run_agent(user_text, emit):
             emit({"t": "tool", "id": tc["id"], "name": fn["name"], "args": args})
             t0 = time.time()
             out = handle(fn["name"], args)
+            ms = int((time.time() - t0) * 1000)
+            ok = not out.startswith("ERROR:")
             steps += 1
-            emit({"t": "tool_end", "id": tc["id"], "out": out[:3500],
-                  "ms": int((time.time() - t0) * 1000)})
+            emit({"t": "tool_end", "id": tc["id"], "out": out[:3500], "ms": ms, "ok": ok})
             msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": out})
+            if STORE:
+                STORE.add(sid, "tool", content=out, tool_call_id=tc["id"],
+                          name=fn["name"], meta={"ms": ms, "ok": ok})
+                STORE.bump(sid, steps=1)
 
         trim(msgs)
 
-    if not finished:
+    stopped = stop_ev.is_set()
+    if not finished and not stopped:
         tip = ("（已连续执行 %d 步，到单次上限 %d 步就停了。任务没完的话，回一句「继续」接着跑；"
                "想一次跑更长：AGENT_MAX_TURNS=300 python3 webchat.py）" % (steps, MAX_TURNS))
         emit({"t": "delta", "v": "\n\n" + tip})
+        if STORE:
+            STORE.add(sid, "assistant", content=tip, meta={"steps": 0, "hit_limit": True})
         msgs.append({"role": "assistant", "content": tip})
 
-    emit({"t": "done", "steps": steps, "turns": turns, "hit_limit": (not finished)})
+    if not used_out:
+        used_out = est_tokens(all_text)
+    total_ms = int((time.time() - t_start) * 1000)
+    if STORE:
+        STORE.update(sid, updated_at=now())
+        if used_in or used_out:
+            STORE.bump(sid, tokens_in=used_in, tokens_out=used_out)
+
+    emit({"t": "done", "steps": steps, "turns": turns, "ms": total_ms,
+          "hit_limit": (not finished and not stopped), "stopped": stopped,
+          "tokens": {"in": used_in, "out": used_out}})
+
+    with RUN_LOCK:
+        RUNNING.pop(sid, None)
+
+
+def start_run(sid, text):
+    """起一个后台线程跑任务，返回 bus。客户端只负责订阅。"""
+    with RUN_LOCK:
+        if sid in RUNNING:
+            return None
+        stop_ev = threading.Event()
+        bus = get_bus(sid)
+        bus.reset()
+        RUNNING[sid] = {"stop": stop_ev, "started": time.time(), "bus": bus}
+
+    def target():
+        try:
+            run_agent(sid, text, bus, stop_ev)
+        except Exception as e:
+            bus.pub({"t": "error", "v": "%s: %s" % (type(e).__name__, e)})
+            bus.pub({"t": "done", "steps": 0, "turns": 0, "ms": 0,
+                     "hit_limit": False, "stopped": False,
+                     "tokens": {"in": 0, "out": 0}})
+            with RUN_LOCK:
+                RUNNING.pop(sid, None)
+
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    return bus
 
 
 # ------------------------------------------------------------------ HTTP 服务
 
+MIME = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+        ".js": "application/javascript; charset=utf-8", ".svg": "image/svg+xml",
+        ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json"}
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "webchat/1.0"
+    server_version = "webchat/2.0"
+    protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
         pass
 
+    # ---------- 输出 ----------
     def _send(self, code, ctype, body):
         if isinstance(body, str):
             body = body.encode("utf-8")
@@ -399,52 +871,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)
-
-    def do_GET(self):
-        path = self.path.split("?")[0]
-        if path in ("/", "/index.html"):
-            self._send(200, "text/html; charset=utf-8", HTML)
-        elif path == "/api/history":
-            with EVLOCK:
-                body = json.dumps(STATE["events"], ensure_ascii=False)
-            self._send(200, "application/json", body)
-        elif path == "/api/state":
-            n = len([m for m in list(STATE["msgs"]) if m.get("role") in ("user", "assistant")])
-            self._send(200, "application/json",
-                       json.dumps({"messages": n, "work": WORK, "model": MODEL,
-                                   "mock": MOCK}, ensure_ascii=False))
-        elif path == "/favicon.ico":
-            self._send(204, "image/x-icon", b"")
-        else:
-            self._send(404, "text/plain; charset=utf-8", "not found")
-
-    def do_POST(self):
-        path = self.path.split("?")[0]
-        n = int(self.headers.get("Content-Length") or 0)
-        raw = self.rfile.read(n) if n else b"{}"
         try:
-            data = json.loads(raw.decode("utf-8"))
-        except Exception:
-            data = {}
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
-        if path == "/api/reset":
-            with STATE["lock"]:
-                STATE["msgs"] = []
-            with EVLOCK:
-                STATE["events"] = []
-            self._send(200, "application/json", '{"ok":true}')
-            return
+    def js(self, obj, code=200):
+        self._send(code, "application/json; charset=utf-8",
+                   json.dumps(obj, ensure_ascii=False))
 
-        if path != "/api/chat":
-            self._send(404, "text/plain; charset=utf-8", "not found")
-            return
-
-        text = (data.get("message") or "").strip()
-        if not text:
-            self._send(400, "application/json", '{"error":"empty message"}')
-            return
-
+    def sse_start(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache, no-transform")
@@ -453,435 +889,236 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.close_connection = True
 
-        def emit(ev):
-            log_event(ev)
-            try:
-                self.wfile.write(("data: " + json.dumps(ev, ensure_ascii=False) + "\n\n").encode("utf-8"))
-                self.wfile.flush()
-            except Exception:
-                raise BrokenPipeError()
+    def sse_write(self, ev):
+        data = json.dumps(ev, ensure_ascii=False)
+        sid = ev.get("seq")
+        head = ("id: %d\n" % sid) if sid else ""
+        self.wfile.write((head + "data: " + data + "\n\n").encode("utf-8"))
+        self.wfile.flush()
 
+    # ---------- 路由 ----------
+    def do_GET(self):
+        u = urlparse(self.path)
+        p = u.path
+        q = parse_qs(u.query)
+
+        if p in ("/", "/index.html"):
+            return self.serve_static("app.html")
+        if p.startswith("/static/"):
+            return self.serve_static(p[len("/static/"):])
+        if p == "/favicon.ico":
+            return self._send(204, "image/x-icon", b"")
+
+        m = re.match(r"^/api/sessions/([^/]+)/messages$", p)
+        if m:
+            sid = m.group(1)
+            after = int((q.get("after_seq") or ["0"])[0])
+            if not STORE or not STORE.get(sid):
+                return self.js({"error": "not found"}, 404)
+            msgs = STORE.messages(sid, after_seq=after)
+            return self.js({"session": STORE.get(sid), "messages": msgs,
+                            "running": is_running(sid)})
+
+        m = re.match(r"^/api/sessions/([^/]+)/stats$", p)
+        if m:
+            sid = m.group(1)
+            if not STORE or not STORE.get(sid):
+                return self.js({"error": "not found"}, 404)
+            st = STORE.stats(sid)
+            st["running"] = is_running(sid)
+            return self.js(st)
+
+        m = re.match(r"^/api/sessions/([^/]+)/stream$", p)
+        if m:
+            sid = m.group(1)
+            last = int((q.get("last_seq") or ["0"])[0])
+            if (q.get("dl") or [""])[0] == "1":
+                return self.js({"messages": STORE.messages(sid, after_seq=last)})
+            return self.stream(sid, last)
+
+        if p == "/api/sessions":
+            qq = (q.get("q") or [""])[0].strip()
+            if not STORE:
+                return self.js({"sessions": []})
+            return self.js({"sessions": STORE.list(qq or None)})
+
+        if p == "/api/health":
+            return self.js({"ok": True, "model": MODEL, "mock": MOCK, "work": WORK,
+                            "db": DB_PATH if USE_DB else None,
+                            "db_size": STORE.size() if STORE else 0,
+                            "max_turns": MAX_TURNS, "version": "2.0"})
+
+        return self._send(404, "text/plain; charset=utf-8", "not found")
+
+    def do_POST(self):
+        u = urlparse(self.path)
+        p = u.path
+        body = self.body()
+
+        if p == "/api/sessions":
+            title = (body.get("title") or "新对话").strip() or "新对话"
+            if not STORE:
+                return self.js({"error": "db disabled"}, 400)
+            sid = STORE.create(title)
+            return self.js({"id": sid, "title": title})
+
+        m = re.match(r"^/api/sessions/([^/]+)/chat$", p)
+        if m:
+            sid = m.group(1)
+            text = (body.get("message") or "").strip()
+            if not text:
+                return self.js({"error": "empty message"}, 400)
+            if not STORE or not STORE.get(sid):
+                return self.js({"error": "not found"}, 404)
+            bus = start_run(sid, text)
+            if bus is None:
+                return self.js({"error": "running", "hint": "这个会话正在运行"}, 409)
+            return self.stream(sid, 0)
+
+        m = re.match(r"^/api/sessions/([^/]+)/stop$", p)
+        if m:
+            sid = m.group(1)
+            with RUN_LOCK:
+                r = RUNNING.get(sid)
+            if r:
+                r["stop"].set()
+            return self.js({"ok": bool(r)})
+
+        if p == "/api/reset":
+            # 兼容旧前端：清掉最近会话，不删库
+            return self.js({"ok": True})
+
+        return self._send(404, "text/plain; charset=utf-8", "not found")
+
+    def do_PATCH(self):
+        u = urlparse(self.path)
+        m = re.match(r"^/api/sessions/([^/]+)$", u.path)
+        if not m:
+            return self._send(404, "text/plain", "not found")
+        sid = m.group(1)
+        if not STORE or not STORE.get(sid):
+            return self.js({"error": "not found"}, 404)
+        b = self.body()
+        kw = {}
+        if "title" in b:
+            t = (b.get("title") or "").strip()[:60]
+            if t:
+                kw["title"] = t
+        if "pinned" in b:
+            kw["pinned"] = 1 if b["pinned"] else 0
+        if "archived" in b:
+            kw["archived"] = 1 if b["archived"] else 0
+        kw["updated_at"] = now()
+        STORE.update(sid, **kw)
+        return self.js({"ok": True, "session": STORE.get(sid)})
+
+    def do_DELETE(self):
+        u = urlparse(self.path)
+        m = re.match(r"^/api/sessions/([^/]+)$", u.path)
+        if not m:
+            return self._send(404, "text/plain", "not found")
+        sid = m.group(1)
+        with RUN_LOCK:
+            r = RUNNING.get(sid)
+        if r:
+            r["stop"].set()
+        if STORE:
+            STORE.delete(sid)
+        with BUSES_LOCK:
+            BUSES.pop(sid, None)
+        return self.js({"ok": True})
+
+    # ---------- 工具方法 ----------
+    def body(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(n) if n else b"{}"
         try:
-            with STATE["lock"]:
-                run_agent(text, emit)
-        except BrokenPipeError:
-            return
-        except Exception as e:
-            try:
-                emit({"t": "error", "v": "%s: %s" % (type(e).__name__, e)})
-            except Exception:
-                pass
-        return
+            return json.loads(raw.decode("utf-8"))
+        except Exception:
+            return {}
+
+    def serve_static(self, name):
+        name = name.split("?")[0]
+        if "/" in name or "\\" in name or name.startswith("."):
+            return self._send(403, "text/plain", "forbidden")
+        fp = os.path.join(STATIC, name)
+        if not os.path.exists(fp):
+            if name == "app.html":
+                return self._send(200, "text/html; charset=utf-8", FALLBACK_HTML)
+            return self._send(404, "text/plain", "not found")
+        ext = os.path.splitext(name)[1].lower()
+        with open(fp, "rb") as f:
+            data = f.read()
+        self._send(200, MIME.get(ext, "application/octet-stream"), data)
+
+    def stream(self, sid, after_seq):
+        bus = get_bus(sid)
+        self.sse_start()
+        q = bus.subscribe()
+        sent = after_seq
+        done = False
+        try:
+            for ev in bus.after(after_seq):
+                if ev.get("t") == "__close__":
+                    continue
+                self.sse_write(ev)
+                sent = max(sent, ev.get("seq", 0))
+                if ev.get("t") in ("done", "error"):
+                    done = True
+            while not done:
+                try:
+                    ev = q.get(timeout=12)
+                except queue.Empty:
+                    try:
+                        self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+                    except Exception:
+                        break
+                    if not is_running(sid):
+                        break
+                    continue
+                if ev.get("t") == "__close__":
+                    break
+                if ev.get("seq", 0) <= sent:
+                    continue
+                self.sse_write(ev)
+                sent = max(sent, ev.get("seq", 0))
+                if ev.get("t") in ("done", "error"):
+                    done = True
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            bus.unsubscribe(q)
 
 
-# ------------------------------------------------------------------ 前端
-
-HTML = r"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#16171a" media="(prefers-color-scheme: dark)">
-<title>Agent</title>
-<style>
-:root{
-  --bg:#ffffff; --bg2:#f7f7f8; --fg:#191a1c; --muted:#8a8f98; --line:#e9e9ee;
-  --accent:#2b6cf6; --code:#f6f7f9; --tool:#fbfbfd; --tool-line:#e6e7eb; --ok:#22a06b; --err:#d93025;
-}
-@media (prefers-color-scheme: dark){
-  :root{ --bg:#16171a; --bg2:#1e1f23; --fg:#e9eaee; --muted:#8b909a; --line:#2a2c31;
-         --accent:#5b8cff; --code:#111214; --tool:#1b1c20; --tool-line:#2c2e34; --ok:#3ecf8e; --err:#ff6b5e; }
-}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0;height:100%}
-body{
-  background:var(--bg);color:var(--fg);
-  font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",sans-serif;
-  overscroll-behavior:none;
-}
-#app{display:flex;flex-direction:column;height:100vh;height:100dvh}
-header{
-  flex:0 0 auto;display:flex;align-items:center;gap:8px;
-  padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;
-  border-bottom:1px solid var(--line);background:var(--bg);
-  position:sticky;top:0;z-index:5;
-}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:0 0 auto}
-.dot.busy{background:var(--accent);animation:pulse 1s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
-h1{font-size:14px;font-weight:600;margin:0;letter-spacing:.2px}
-.sub{font-size:11.5px;color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums}
-#new{border:1px solid var(--line);background:none;color:var(--muted);width:26px;height:26px;
-  border-radius:50%;font-size:15px;line-height:1;display:grid;place-items:center;cursor:pointer;
-  padding:0;flex:0 0 auto;margin-left:10px}
-#feed{flex:1 1 auto;overflow-y:auto;padding:18px 14px 8px;scroll-behavior:smooth;position:relative}
-#empty{position:absolute;left:0;right:0;top:34%;text-align:center;padding:0 28px}
-#empty .et{font-size:19px;font-weight:650;letter-spacing:.3px;margin-bottom:7px}
-#empty .es{font-size:13px;color:var(--muted);line-height:1.75;margin-bottom:22px}
-.chips{display:flex;flex-direction:column;gap:9px;max-width:290px;margin:0 auto}
-.chips button{border:1px solid var(--line);background:var(--bg2);color:var(--fg);border-radius:12px;
-  padding:11px 13px;font-size:13.5px;text-align:left;cursor:pointer;font-family:inherit}
-.chips button:active{background:var(--line)}
-.msg{margin:0 0 18px;display:flex;flex-direction:column;max-width:100%}
-.msg.user{align-items:flex-end}
-.bubble{
-  background:var(--bg2);border:1px solid var(--line);border-radius:16px;border-bottom-right-radius:5px;
-  padding:9px 13px;max-width:86%;white-space:pre-wrap;word-break:break-word;
-}
-.md{width:100%;word-break:break-word}
-.md p{margin:0 0 10px}
-.md p:last-child{margin-bottom:0}
-.md h1,.md h2,.md h3,.md h4{margin:16px 0 8px;line-height:1.35;font-weight:650}
-.md h1{font-size:17px}.md h2{font-size:16px}.md h3{font-size:15px}.md h4{font-size:14.5px}
-.md ul,.md ol{margin:6px 0 10px;padding-left:20px}
-.md li{margin:3px 0}
-.md hr{border:none;border-top:1px solid var(--line);margin:14px 0}
-.md blockquote{margin:8px 0;padding:2px 0 2px 11px;border-left:2.5px solid var(--line);color:var(--muted)}
-.md code{font:.88em/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  background:var(--code);border:1px solid var(--tool-line);border-radius:5px;padding:1px 4px}
-.md pre{background:var(--code);border:1px solid var(--tool-line);border-radius:10px;
-  padding:11px 12px;overflow-x:auto;margin:8px 0 12px}
-.md pre code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.55;white-space:pre}
-.md table{border-collapse:collapse;width:100%;margin:8px 0 12px;font-size:13.5px;table-layout:auto}
-.md th,.md td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top;word-break:break-word}
-.md th{background:var(--bg2);font-weight:600;white-space:nowrap}
-.md a{color:var(--accent);text-decoration:none}
-.tool{border:1px solid var(--tool-line);background:var(--tool);border-radius:11px;margin:0 0 12px;overflow:hidden}
-.tool-head{display:flex;align-items:center;gap:8px;padding:9px 11px;cursor:pointer;user-select:none}
-.tool-head .ico{width:16px;text-align:center;color:var(--muted);font-size:13px;flex:0 0 auto}
-.tool-head .nm{font-size:11.5px;font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace;
-  flex:0 0 auto;background:var(--code);border:1px solid var(--tool-line);border-radius:5px;padding:0 5px}
-.tool-head .ar{font-size:12px;color:var(--muted);font-family:ui-monospace,Menlo,Consolas,monospace;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
-.tool-head .st{font-size:10.5px;color:var(--muted);flex:0 0 auto;font-variant-numeric:tabular-nums}
-.tool-head .chev{font-size:12px;color:var(--muted);transition:transform .18s;flex:0 0 auto}
-.tool.open .tool-head .chev{transform:rotate(90deg)}
-.tool-body{display:none;border-top:1px solid var(--tool-line);padding:10px 11px;
-  font:12.2px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  white-space:pre-wrap;word-break:break-all;max-height:340px;overflow:auto;color:#5b616b;
-  background:var(--code)}
-@media (prefers-color-scheme: dark){.tool-body{color:#a8adb8}}
-.tool.open .tool-body{display:block}
-.spin{display:inline-block;width:10px;height:10px;border:1.6px solid var(--accent);
-  border-right-color:transparent;border-radius:50%;animation:rot .7s linear infinite}
-@keyframes rot{to{transform:rotate(360deg)}}
-.think{border-left:2px solid var(--line);padding:2px 0 2px 10px;margin:0 0 12px;
-  color:var(--muted);font-size:12.6px;white-space:pre-wrap}
-.think .hd{font-size:11px;letter-spacing:.5px;margin-bottom:3px;font-weight:600}
-.typing{display:inline-flex;gap:3px;padding:4px 0}
-.typing i{width:5px;height:5px;border-radius:50%;background:var(--muted);animation:blink 1.2s infinite}
-.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
-@keyframes blink{0%,60%,100%{opacity:.25}30%{opacity:1}}
-.errbox{border:1px solid var(--err);color:var(--err);border-radius:10px;padding:9px 11px;
-  font-size:13px;margin:0 0 14px;white-space:pre-wrap;word-break:break-word}
-footer{flex:0 0 auto;padding:8px 12px calc(env(safe-area-inset-bottom) + 10px);
-  border-top:1px solid var(--line);background:var(--bg)}
-.composer{display:flex;align-items:flex-end;gap:8px;background:var(--bg2);border:1px solid var(--line);
-  border-radius:20px;padding:5px 5px 5px 14px}
-#ta{flex:1 1 auto;border:none;outline:none;background:none;color:var(--fg);resize:none;
-  font:15px/1.5 inherit;max-height:120px;padding:7px 0;margin:0}
-#ta::placeholder{color:var(--muted)}
-#send{flex:0 0 auto;width:34px;height:34px;border-radius:50%;border:none;background:var(--accent);
-  color:#fff;font-size:16px;display:grid;place-items:center;transition:opacity .15s;cursor:pointer}
-#send:disabled{opacity:.3;cursor:default}
-.hint{text-align:center;font-size:11px;color:var(--muted);margin:6px 0 0;letter-spacing:.2px}
-</style>
-</head>
-<body>
-<div id="app">
-  <header>
-    <span class="dot" id="dot"></span>
-    <h1>Agent</h1>
-    <span class="sub" id="sub">就绪</span>
-    <button id="new" title="新对话">＋</button>
-  </header>
-  <main id="feed">
-    <div id="empty">
-      <div class="et">今天做什么？</div>
-      <div class="es">它能在手机里执行命令、读写文件、分析 APK 和 .so</div>
-      <div class="chips">
-        <button>看看工作目录里有什么</button>
-        <button>分析一个 APK 的权限和组件</button>
-        <button>写个 Python 脚本统计文件大小</button>
-      </div>
-    </div>
-  </main>
-  <footer>
-    <div class="composer">
-      <textarea id="ta" rows="1" placeholder="说点什么，或让它干活…"></textarea>
-      <button id="send" disabled>↑</button>
-    </div>
-    <div class="hint" id="hint"></div>
-  </footer>
-</div>
-<script>
-const feed=document.getElementById('feed'), ta=document.getElementById('ta'),
-      btn=document.getElementById('send'), dot=document.getElementById('dot'),
-      sub=document.getElementById('sub'), hint=document.getElementById('hint');
-let busy=false, nearBottom=true, cur=null, curRaw='', raf=null, t0=0;
-
-fetch('/api/state').then(r=>r.json()).then(s=>{
-  hint.textContent = (s.mock?'演示模式 · ':'') + s.work + ' · ' + s.model;
-}).catch(()=>{});
-
-feed.addEventListener('scroll',()=>{
-  nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 90;
-},{passive:true});
-
-function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-
-function inline(s){
-  s=esc(s);
-  s=s.replace(/`([^`]+)`/g,'<code>$1</code>');
-  s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
-  s=s.replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
-  s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
-  s=s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,'$1<a href="$2" target="_blank" rel="noopener">$2</a>');
-  return s;
-}
-function cells(l){return l.trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(x=>x.trim())}
-
-function mdBlock(t){
-  const lines=t.split('\n'); let out=[], i=0;
-  while(i<lines.length){
-    let ln=lines[i];
-    if(/^\s*$/.test(ln)){i++;continue}
-    if(/\|/.test(ln)&&i+1<lines.length&&/^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i+1])&&/-/.test(lines[i+1])){
-      const head=cells(ln); i+=2; const rows=[];
-      while(i<lines.length&&/\|/.test(lines[i])&&! /^\s*$/.test(lines[i])){rows.push(cells(lines[i]));i++}
-      out.push('<table><thead><tr>'+head.map(h=>'<th>'+inline(h)+'</th>').join('')+'</tr></thead><tbody>'
-        +rows.map(r=>'<tr>'+r.map(c=>'<td>'+inline(c)+'</td>').join('')+'</tr>').join('')+'</tbody></table>');
-      continue;
-    }
-    let m=ln.match(/^(#{1,4})\s+(.*)$/);
-    if(m){const n=Math.min(m[1].length+2,6);out.push('<h'+n+'>'+inline(m[2])+'</h'+n+'>');i++;continue}
-    if(/^\s*(---|\*\*\*|___)\s*$/.test(ln)){out.push('<hr>');i++;continue}
-    if(/^\s*[-*+]\s+/.test(ln)){
-      const it=[]; while(i<lines.length&&/^\s*[-*+]\s+/.test(lines[i])){it.push(inline(lines[i].replace(/^\s*[-*+]\s+/,'')));i++}
-      out.push('<ul>'+it.map(x=>'<li>'+x+'</li>').join('')+'</ul>'); continue;
-    }
-    if(/^\s*\d+[.)]\s+/.test(ln)){
-      const it=[]; while(i<lines.length&&/^\s*\d+[.)]\s+/.test(lines[i])){it.push(inline(lines[i].replace(/^\s*\d+[.)]\s+/,'')));i++}
-      out.push('<ol>'+it.map(x=>'<li>'+x+'</li>').join('')+'</ol>'); continue;
-    }
-    if(/^\s*>\s?/.test(ln)){
-      const q=[]; while(i<lines.length&&/^\s*>\s?/.test(lines[i])){q.push(inline(lines[i].replace(/^\s*>\s?/,'')));i++}
-      out.push('<blockquote>'+q.join('<br>')+'</blockquote>'); continue;
-    }
-    const p=[];
-    while(i<lines.length&&!/^\s*$/.test(lines[i])&&!/^\s*(#{1,4}\s|[-*+]\s|\d+[.)]\s|>)/.test(lines[i])){p.push(inline(lines[i]));i++}
-    out.push('<p>'+p.join('<br>')+'</p>');
-  }
-  return out.join('');
-}
-function md(src){
-  const parts=String(src).split(/^```/m);
-  let html='';
-  for(let i=0;i<parts.length;i++){
-    if(i%2===1){
-      let body=parts[i], nl=body.indexOf('\n');
-      if(nl>=0) body=body.slice(nl+1);
-      html+='<pre><code>'+esc(body.replace(/\n$/,''))+'</code></pre>';
-    }else{
-      html+=mdBlock(parts[i]);
-    }
-  }
-  return html;
-}
-
-function scroll(){ if(nearBottom) feed.scrollTop=feed.scrollHeight }
-
-function syncEmpty(){
-  const e=document.getElementById('empty');
-  if(e) e.style.display = feed.querySelector('.msg') ? 'none' : '';
-}
-function addUser(text){
-  const d=document.createElement('div'); d.className='msg user';
-  d.innerHTML='<div class="bubble">'+esc(text)+'</div>';
-  feed.appendChild(d); nearBottom=true; scroll(); syncEmpty();
-}
-function addBot(){
-  const d=document.createElement('div'); d.className='msg bot';
-  d.innerHTML='<div class="md"><span class="typing"><i></i><i></i><i></i></span></div>';
-  feed.appendChild(d); scroll();
-  return d.querySelector('.md');
-}
-function cut(){
-  if(cur){
-    if(curRaw.trim()) cur.innerHTML=md(curRaw);
-    else { const m=cur.closest('.msg'); if(m) m.remove(); }
-  }
-  cur=null; curRaw='';
-}
-function pushDelta(v){
-  if(!cur){ cur=addBot(); curRaw=''; }
-  curRaw+=v; schedule();
-}
-function addThink(v){
-  cut();
-  let el=feed.querySelector('.think.live');
-  if(!el){
-    el=document.createElement('div'); el.className='think live';
-    el.innerHTML='<div class="hd">思考</div><div class="tx"></div>';
-    feed.appendChild(el);
-  }
-  el.querySelector('.tx').textContent+=v; scroll();
-}
-function addTool(ev){
-  cut();
-  const map={run_shell:'shell',list_dir:'ls',read_file:'read',write_file:'write',rev:'rev'};
-  const d=document.createElement('div'); d.className='tool'; d.dataset.id=ev.id;
-  const a=ev.args||{};
-  let arg=a.cmd||a.path||a.action||'';
-  if(a.action&&a.path) arg=a.action+' '+a.path;
-  if(a.extra) arg+=' '+a.extra;
-  d.innerHTML='<div class="tool-head"><span class="ico"><span class="spin"></span></span>'
-    +'<span class="nm">'+esc(map[ev.name]||ev.name)+'</span>'
-    +'<span class="ar">'+esc(arg)+'</span>'
-    +'<span class="st"></span><span class="chev">›</span></div>'
-    +'<pre class="tool-body"></pre>';
-  d.querySelector('.tool-head').onclick=()=>d.classList.toggle('open');
-  feed.appendChild(d); scroll();
-}
-function endTool(ev){
-  const d=feed.querySelector('.tool[data-id="'+CSS.escape(ev.id)+'"]');
-  if(!d) return;
-  d.querySelector('.ico').innerHTML='✓';
-  d.querySelector('.ico').style.color='var(--ok)';
-  d.querySelector('.st').textContent=(ev.ms||0)+'ms';
-  d.querySelector('.tool-body').textContent=ev.out||'(无输出)';
-  scroll();
-}
-function addErr(v){
-  const d=document.createElement('div'); d.className='errbox'; d.textContent=v;
-  feed.appendChild(d); scroll();
-}
-
-function flush(){
-  raf=null;
-  if(!cur) return;
-  cur.innerHTML=md(curRaw);
-  scroll();
-}
-function schedule(){
-  if(!raf) raf=requestAnimationFrame(flush);
-}
-
-let pendingUser=null;
-function buildEmpty(){
-  const d=document.createElement('div'); d.id='empty';
-  d.innerHTML='<div class="et">今天做什么？</div>'
-    +'<div class="es">它能在手机里执行命令、读写文件、分析 APK 和 .so</div>'
-    +'<div class="chips"><button>看看工作目录里有什么</button>'
-    +'<button>分析一个 APK 的权限和组件</button>'
-    +'<button>写个 Python 脚本统计文件大小</button></div>';
-  d.querySelectorAll('button').forEach(b=>b.onclick=()=>{
-    ta.value=b.textContent; ta.dispatchEvent(new Event('input')); send();
-  });
-  return d;
-}
-document.querySelectorAll('#empty button').forEach(b=>b.onclick=()=>{
-  ta.value=b.textContent; ta.dispatchEvent(new Event('input')); send();
-});
-
-function onEvent(ev){
-  if(ev.t==='user'){
-    if(pendingUser===ev.v){ pendingUser=null; return; }
-    cut(); addUser(ev.v);
-  }
-  else if(ev.t==='delta'){ pushDelta(ev.v); }
-  else if(ev.t==='think'){ addThink(ev.v); }
-  else if(ev.t==='tool'){ addTool(ev); }
-  else if(ev.t==='tool_end'){ endTool(ev); }
-  else if(ev.t==='error'){ cut(); addErr(ev.v); }
-  else if(ev.t==='done'){
-    const s=((Date.now()-t0)/1000).toFixed(1);
-    sub.textContent=(ev.steps?ev.steps+' 步 · ':'')+s+'s'+(ev.hit_limit?' · 已达上限':'');
-  }
-}
-
-fetch('/api/history').then(r=>r.json()).then(list=>{
-  if(!Array.isArray(list)||!list.length) return;
-  list.forEach(ev=>{ if(ev.t!=='done') onEvent(ev) });
-  cut(); sub.textContent='历史 · '+list.filter(e=>e.t==='user').length+' 轮';
-}).catch(()=>{});
-
-async function send(){
-  const text=ta.value.trim();
-  if(!text||busy) return;
-  ta.value=''; ta.style.height='auto'; btn.disabled=true;
-  busy=true; dot.classList.add('busy'); sub.textContent='运行中'; t0=Date.now();
-  addUser(text); pendingUser=text;
-  curRaw=''; cur=addBot();
-
-  try{
-    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:text})});
-    if(!r.ok){ throw new Error('HTTP '+r.status) }
-    const rd=r.body.getReader(), dec=new TextDecoder(); let buf='';
-    while(true){
-      const {done,value}=await rd.read();
-      if(done) break;
-      buf+=dec.decode(value,{stream:true});
-      let k;
-      while((k=buf.indexOf('\n\n'))>=0){
-        const chunk=buf.slice(0,k); buf=buf.slice(k+2);
-        for(const line of chunk.split('\n')){
-          if(!line.startsWith('data:')) continue;
-          let ev; try{ ev=JSON.parse(line.slice(5).trim()) }catch(e){ continue }
-          onEvent(ev);
-        }
-      }
-    }
-  }catch(e){
-    addErr('连接失败：'+e.message);
-    sub.textContent='出错';
-  }finally{
-    cut();
-    const live=feed.querySelector('.think.live'); if(live) live.classList.remove('live');
-    busy=false; dot.classList.remove('busy'); btn.disabled=!ta.value.trim();
-    scroll();
-  }
-}
-
-ta.addEventListener('input',()=>{
-  ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,120)+'px';
-  btn.disabled=!ta.value.trim()||busy;
-});
-ta.addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){ e.preventDefault(); send(); }
-});
-btn.onclick=send;
-document.getElementById('new').onclick=async()=>{
-  if(busy) return;
-  if(!confirm('清空当前对话？')) return;
-  await fetch('/api/reset',{method:'POST',body:'{}'}).catch(()=>{});
-  feed.innerHTML=''; feed.appendChild(buildEmpty()); cur=null; curRaw=''; pendingUser=null;
-  sub.textContent='就绪'; syncEmpty();
-};
-ta.focus();
-</script>
-</body>
-</html>
-"""
+FALLBACK_HTML = """<!doctype html><meta charset=utf-8>
+<body style="font:15px system-ui;padding:40px;line-height:1.7">
+<h2>缺少 static 目录</h2>
+<p>webchat.py 需要同目录下的 <code>static/app.html</code>、<code>app.css</code>、<code>app.js</code>。</p>
+<p>从仓库重新拉一次即可：<code>sh update.sh</code></p>
+</body>"""
 
 
 # ------------------------------------------------------------------ 启动
 
+STORE = None
+
+
 def main():
-    global MOCK, PORT, WORK
+    global MOCK, PORT, WORK, SYSTEM, STORE, USE_DB
     ap = argparse.ArgumentParser(description="agent 图形界面")
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--host", default=HOST, help="默认 127.0.0.1，改成 0.0.0.0 会暴露到局域网")
     ap.add_argument("--mock", action="store_true", help="不需要 API key，演示界面")
+    ap.add_argument("--no-db", action="store_true", help="不落盘，单会话内存模式")
     a = ap.parse_args()
 
     MOCK = a.mock
     PORT = a.port
     WORK = os.path.abspath(os.path.expanduser(WORK))
     os.makedirs(WORK, exist_ok=True)
-    globals()["SYSTEM"] = build_system(WORK)
+    SYSTEM = build_system(WORK)
+    globals()["SYSTEM"] = SYSTEM
 
     if not MOCK and not API_KEY:
         print("缺少 DEEPSEEK_KEY。两种办法，任选一个：")
@@ -898,13 +1135,35 @@ def main():
         print("  或者加 --mock，不用 key，只看界面。")
         return 2
 
+    USE_DB = not a.no_db
+    if USE_DB:
+        try:
+            STORE = Store(DB_PATH)
+        except Exception as e:
+            print("数据库打不开（%s），退回内存模式：%s" % (DB_PATH, e))
+            USE_DB = False
+            STORE = Store(":memory:")
+    else:
+        STORE = Store(":memory:")
+    if not os.path.isdir(STATIC):
+        print("")
+        print("  警告：找不到 %s" % STATIC)
+        print("  界面会显示提示页。请确保 static/ 和 webchat.py 在同一目录。")
+        print("")
+
     srv = ThreadingHTTPServer((a.host, PORT), Handler)
+    srv.daemon_threads = True
     url = "http://127.0.0.1:%d" % PORT
     print("")
     print("  agent 界面已启动")
     print("  %s" % url)
     print("  工作目录 %s" % WORK)
     print("  模式 %s" % ("MOCK 演示" if MOCK else MODEL))
+    if USE_DB:
+        n = len(STORE.list())
+        print("  会话库 %s（%d 个会话）" % (DB_PATH, n))
+    else:
+        print("  会话库 未启用（--no-db）")
     if a.host not in ("127.0.0.1", "localhost"):
         print("  监听 %s:%d（所有网卡，端口映射能进来了）" % (a.host, PORT))
     if ENV_FILE:
