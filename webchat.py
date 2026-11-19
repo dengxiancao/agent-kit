@@ -1191,8 +1191,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
     # ---------- 鉴权 ----------
+    def is_local(self):
+        """本机访问不放口令：Termux 里就是同一个手机开的浏览器，多要一次口令纯属添乱。"""
+        ip = (self.client_address or ("",))[0]
+        return ip in ("127.0.0.1", "::1", "localhost")
+
     def authed(self):
-        if not TOKEN:
+        if not TOKEN or self.is_local():
             return True
         c = SimpleCookie(self.headers.get("Cookie") or "")
         if "webchat_k" in c and c["webchat_k"].value == TOKEN:
@@ -1218,7 +1223,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def cookie_redirect(self):
         """用 ?k= 打开过就种 cookie，然后跳到不带参数的地址，避免口令留在地址栏/历史里。"""
-        if not TOKEN:
+        if not TOKEN or self.is_local():
             return False
         u = urlparse(self.path)
         q = parse_qs(u.query)
@@ -1612,10 +1617,10 @@ def main():
         ip = local_ip()
         print("  监听 %s:%d（所有网卡，端口映射能进来了）" % (a.host, PORT))
         if ip:
-            print("  手机/别的设备打开（第一次要用这个完整地址）：")
+            print("  局域网设备（手机/平板/另一台电脑）打开：")
             print("     http://%s:%d/%s" % (ip, PORT, ("?k=" + TOKEN) if TOKEN else ""))
     if TOKEN:
-        print("  访问口令 %s" % TOKEN)
+        print("  访问口令 %s（本机不用，局域网设备第一次要用上面带 ?k= 的地址）" % TOKEN)
         print("  口令来源 WEBCHAT_TOKEN 或 ~/.config/webchat/token（改完重启生效）")
     else:
         print("  访问口令 未启用（只监听本机，无需口令）")
