@@ -30,7 +30,9 @@ WORK = os.path.abspath(os.path.expanduser(os.environ.get("AGENT_WORK", "~/work")
 API_KEY = os.environ.get("DEEPSEEK_KEY", "")
 API_URL = os.environ.get("DEEPSEEK_URL", "https://api.deepseek.com/chat/completions")
 MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
-MAX_TURNS = int(os.environ.get("AGENT_MAX_TURNS", "12"))
+# 单条消息内最多几轮「模型 → 工具 → 模型」。12 太小：稍微复杂的任务（看屏幕、改文件、
+# 跑命令、验证）十几步就顶到天花板，停下来又不说，看起来就是"卡死"。
+MAX_TURNS = int(os.environ.get("AGENT_MAX_TURNS", "100"))
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("PORT", "8765"))
 MOCK = False
@@ -250,7 +252,7 @@ def mock_chat(msgs):
 
 # ------------------------------------------------------------------ agent 循环
 
-def trim(msgs, keep=34):
+def trim(msgs, keep=60):
     if len(msgs) <= keep:
         return
     start = len(msgs) - keep
@@ -279,6 +281,7 @@ def run_agent(user_text, emit):
     msgs.append({"role": "user", "content": user_text})
     steps = 0
     turns = 0
+    finished = False
     gen = mock_chat if MOCK else stream_chat
 
     for turn in range(MAX_TURNS):
@@ -309,6 +312,7 @@ def run_agent(user_text, emit):
 
         if not calls:
             msgs.append({"role": "assistant", "content": text_acc})
+            finished = True
             break
 
         tcs = []
@@ -334,7 +338,13 @@ def run_agent(user_text, emit):
 
         trim(msgs)
 
-    emit({"t": "done", "steps": steps, "turns": turns})
+    if not finished:
+        tip = ("（已连续执行 %d 步，到单次上限 %d 步就停了。任务没完的话，回一句「继续」接着跑；"
+               "想一次跑更长：AGENT_MAX_TURNS=300 python3 webchat.py）" % (steps, MAX_TURNS))
+        emit({"t": "delta", "v": "\n\n" + tip})
+        msgs.append({"role": "assistant", "content": tip})
+
+    emit({"t": "done", "steps": steps, "turns": turns, "hit_limit": (not finished)})
 
 
 # ------------------------------------------------------------------ HTTP 服务
@@ -751,7 +761,7 @@ function onEvent(ev){
   else if(ev.t==='error'){ cut(); addErr(ev.v); }
   else if(ev.t==='done'){
     const s=((Date.now()-t0)/1000).toFixed(1);
-    sub.textContent=(ev.steps?ev.steps+' 步 · ':'')+s+'s';
+    sub.textContent=(ev.steps?ev.steps+' 步 · ':'')+s+'s'+(ev.hit_limit?' · 已达上限':'');
   }
 }
 
