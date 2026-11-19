@@ -471,6 +471,10 @@ class Store:
         rows = self.messages(sid)
         if upto_seq:
             rows = [r for r in rows if r["seq"] <= upto_seq]
+        cu = int(src.get("compact_upto") or 0)
+        summ = src.get("summary")
+        if upto_seq and cu > upto_seq:      # 分叉点比压缩边界还早，摘要用不上
+            cu, summ = 0, None
         with self.lock:
             for r in rows:
                 self.con.execute(
@@ -483,7 +487,7 @@ class Store:
                 "UPDATE sessions SET model=?, work=?, steps=0, tokens_in=0, tokens_out=0, "
                 "summary=?, compact_upto=? WHERE id=?",
                 (src["model"] or MODEL, src["work"] or WORK,
-                 src.get("summary"), src.get("compact_upto") or 0, new_id))
+                 summ, cu, new_id))
             self.con.commit()
         return new_id
 
