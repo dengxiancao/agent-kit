@@ -725,26 +725,32 @@ python3 adui.py ime</code></pre></div>
 <h3>8.1 为什么要在第二台机器上装</h3>
 <div class="tw"><table><thead><tr><th>理由</th><th>说明</th></tr></thead><tbody><tr><td data-label="理由">屏幕大</td><td data-label="说明">手机上三栏布局挤，电脑上看得清工具输出和表格</td></tr><tr><td data-label="理由">跑得久</td><td data-label="说明">手机切后台容易被系统杀，虚拟机不容易</td></tr><tr><td data-label="理由">能控 Linux 桌面</td><td data-label="说明"><code class="ic">ui.py</code> 靠 X11 截图和 xdotool，只有 Linux 桌面环境能用</td></tr><tr><td data-label="理由">不占用手机</td><td data-label="说明">一边用手机干别的，一边让它跑在虚拟机里</td></tr></tbody></table></div>
 <p>会话库是<b>各存各的</b>，两台机器不共享历史。想让两边看到同一份记录，手动拷 <code class="ic">sessions.db</code>。</p>
-<h3>8.2 装 Python（Ubuntu / Debian）</h3>
-<p>先确认系统版本，别在很老的发行版上折腾：</p>
-<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>lsb_release -a</code></pre></div>
-<p>Ubuntu 20.04 以上、Debian 11 以上都行。</p>
+<h3>8.2 装 Python（先确认你是什么系统）</h3>
+<p>不同发行版的包管理器不一样，<code class="ic">apt</code> 和 <code class="ic">apk</code> 不能混用。先查：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>cat /etc/os-release</code></pre></div>
+<p>看开头几行的 <code class="ic">NAME=</code> 或 <code class="ic">ID=</code>：</p>
+<div class="tw"><table><thead><tr><th>看到</th><th>系统</th><th>用什么命令</th></tr></thead><tbody><tr><td data-label="看到"><code class="ic">Alpine Linux</code></td><td data-label="系统">Alpine（HiSH 虚拟机就是这个）</td><td data-label="用什么命令"><code class="ic">apk</code></td></tr><tr><td data-label="看到"><code class="ic">Ubuntu</code> / <code class="ic">Debian</code></td><td data-label="系统">Ubuntu / Debian</td><td data-label="用什么命令"><code class="ic">apt</code></td></tr></tbody></table></div>
+<h4>A. Alpine</h4>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>apk update
+apk add python3 py3-pip</code></pre></div>
+<p><b>这两条在干什么</b>：<code class="ic">apk</code> 是 Alpine 的包管理器。第一条刷新索引，第二条装 Python 3 和 pip。Alpine 精简得厉害，装完体积也就几十 MB。</p>
+<h4>B. Ubuntu / Debian</h4>
 <div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>sudo apt update
 sudo apt install -y python3 python3-pip</code></pre></div>
-<p><b>这两条在干什么</b>：<code class="ic">apt</code> 是 Debian 系的包管理器（相当于手机上的 <code class="ic">pkg</code>）。第一条刷新软件清单，第二条装 Python 3 和 pip。</p>
-<p>验证：</p>
+<h4>两种都验证一下</h4>
 <div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 --version
 pip3 --version</code></pre></div>
-<p>看到 <code class="ic">Python 3.10.x</code> 或更高就对了。注意 Linux 上 pip 通常叫 <code class="ic">pip3</code>，不是 <code class="ic">pip</code>。</p>
-<div class="warn">如果 <code class="ic">pip3 install xxx</code> 报 <code class="ic">error: externally-managed-environment</code>，这是新版 Debian/Ubuntu 的保护机制，不是坏了。两个选择：一是改用 <code class="ic">apt install python3-xxx</code>（推荐，比如 <code class="ic">python3-pil</code>）；二是给项目建虚拟环境。<b>不要加 <code class="ic">--break-system-packages</code> 硬装</b>，会把系统 Python 搞乱。</div>
+<p>看到 <code class="ic">Python 3.x</code> 和 pip 的版本号就对了。Linux 上 pip 通常叫 <code class="ic">pip3</code>。</p>
+<div class="warn">如果 <code class="ic">pip3 install xxx</code> 报 <code class="ic">error: externally-managed-environment</code>，这是新版发行版的保护机制，不是坏了。<b>优先改用系统包</b>（Alpine 的 <code class="ic">apk add py3-xxx</code>、Ubuntu 的 <code class="ic">apt install python3-xxx</code>）。不要加 <code class="ic">--break-system-packages</code> 硬装，会把系统 Python 搞乱。</div>
 <h3>8.3 装额外依赖</h3>
-<div class="tw"><table><thead><tr><th>用途</th><th>命令</th></tr></thead><tbody><tr><td data-label="用途">控屏（不需要，Linux 上没有安卓）</td><td data-label="命令">—</td></tr><tr><td data-label="用途">OCR</td><td data-label="命令"><code class="ic">sudo apt install -y tesseract-ocr tesseract-ocr-chi-sim poppler-utils python3-pil</code></td></tr><tr><td data-label="用途">X11 桌面控屏</td><td data-label="命令"><code class="ic">sudo apt install -y xdotool imagemagick</code></td></tr><tr><td data-label="用途">反汇编</td><td data-label="命令"><code class="ic">sudo apt install -y radare2</code></td></tr></tbody></table></div>
-<p>Linux 上的 tesseract 一般自带中文包（<code class="ic">tesseract-ocr-chi-sim</code>），不用手动下模型。装完验证：</p>
+<p>按你的系统选一列：</p>
+<div class="tw"><table><thead><tr><th>用途</th><th>Alpine</th><th>Ubuntu / Debian</th></tr></thead><tbody><tr><td data-label="用途">拉代码 / 下载</td><td data-label="Alpine"><code class="ic">apk add git curl</code></td><td data-label="Ubuntu / Debian"><code class="ic">apt install -y git curl</code></td></tr><tr><td data-label="用途">OCR</td><td data-label="Alpine"><code class="ic">apk add tesseract-ocr poppler-utils py3-pillow</code></td><td data-label="Ubuntu / Debian"><code class="ic">apt install -y tesseract-ocr poppler-utils python3-pil</code></td></tr><tr><td data-label="用途">OCR 中文包</td><td data-label="Alpine"><code class="ic">apk add tesseract-ocr-data-chi_sim</code></td><td data-label="Ubuntu / Debian"><code class="ic">apt install -y tesseract-ocr-chi-sim</code></td></tr><tr><td data-label="用途">X11 桌面控屏</td><td data-label="Alpine"><code class="ic">apk add xdotool imagemagick</code></td><td data-label="Ubuntu / Debian"><code class="ic">apt install -y xdotool imagemagick</code></td></tr><tr><td data-label="用途">反汇编</td><td data-label="Alpine"><code class="ic">apk add radare2</code></td><td data-label="Ubuntu / Debian"><code class="ic">apt install -y radare2</code></td></tr></tbody></table></div>
+<p>装完验证 OCR 能不能用：</p>
 <div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>tesseract --list-langs</code></pre></div>
-<p>有 <code class="ic">chi_sim</code> 就行。</p>
+<p>列表里有 <code class="ic">chi_sim</code> 就行。<b>Alpine 如果提示找不到 <code class="ic">tesseract-ocr-data-chi_sim</code> 这个包</b>（老版本仓库没有），用第 7.3 节的手动下载方式，把模型放进 <code class="ic">~/.tessdata</code> 一样能用。</p>
 <h3>8.4 把代码拉下来</h3>
-<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>sudo apt install -y git curl
-mkdir -p ~/work &amp;&amp; cd ~/work
+<p>git 和 curl 8.3 已经装过了，直接拉：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>mkdir -p ~/work &amp;&amp; cd ~/work
 curl -fL -o update.sh.part &quot;https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/update.sh&quot; &amp;&amp; mv update.sh.part update.sh
 sh update.sh</code></pre></div>
 <p>流程和手机上一模一样。拉完 <code class="ic">ls</code> 确认有 <code class="ic">webchat.py</code> 和 <code class="ic">static/</code>。</p>
@@ -770,8 +776,10 @@ python3 webchat.py</code></pre></div>
 <div class="warn"><code class="ic">--host 0.0.0.0</code> 等于把这台机器上的<b>命令执行权</b>开给整个局域网，而这个界面<b>没有密码</b>。同一 WiFi 下的任何人打开浏览器就能让它执行任意命令、看你的会话记录。只在完全信任的网络里这么用，用完改回默认。</div>
 <h3>8.7 控制 Linux 桌面（ui.py）</h3>
 <p><code class="ic">ui.py</code> 是给 X11 桌面用的另一个工具，能力比 <code class="ic">adui.py</code> 弱（因为 Linux 没有元素树），主要靠截图 + OCR 定位。</p>
-<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>sudo apt install -y xdotool imagemagick
-python3 ui.py look</code></pre></div>
+<p>依赖在 8.3 已经装过（<code class="ic">xdotool</code> + <code class="ic">imagemagick</code>）。确认一下：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>which xdotool convert</code></pre></div>
+<p>两个都有路径输出就能用。然后：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 ui.py look</code></pre></div>
 <p>按它输出的提示操作：<code class="ic">ui.py click 文字</code>、<code class="ic">ui.py type 内容</code>、<code class="ic">ui.py key ctrl+t</code>。</p>
 <p><code class="ic">webchat.py</code> 会自动检测 <code class="ic">ui.py</code> 在不在，在的话就能通过对话让它操作桌面。</p>
 <h3>8.8 检查点</h3>

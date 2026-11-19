@@ -1373,55 +1373,73 @@ python3 ocr.py 某个文件.pdf --first 1 --last 2
 
 会话库是**各存各的**，两台机器不共享历史。想让两边看到同一份记录，手动拷 `sessions.db`。
 
-### 8.2 装 Python（Ubuntu / Debian）
+### 8.2 装 Python（先确认你是什么系统）
 
-先确认系统版本，别在很老的发行版上折腾：
+不同发行版的包管理器不一样，`apt` 和 `apk` 不能混用。先查：
 
 ```
-lsb_release -a
+cat /etc/os-release
 ```
 
-Ubuntu 20.04 以上、Debian 11 以上都行。
+看开头几行的 `NAME=` 或 `ID=`：
+
+| 看到 | 系统 | 用什么命令 |
+|---|---|---|
+| `Alpine Linux` | Alpine（HiSH 虚拟机就是这个） | `apk` |
+| `Ubuntu` / `Debian` | Ubuntu / Debian | `apt` |
+
+#### A. Alpine
+
+```
+apk update
+apk add python3 py3-pip
+```
+
+**这两条在干什么**：`apk` 是 Alpine 的包管理器。第一条刷新索引，第二条装 Python 3 和 pip。Alpine 精简得厉害，装完体积也就几十 MB。
+
+#### B. Ubuntu / Debian
 
 ```
 sudo apt update
 sudo apt install -y python3 python3-pip
 ```
 
-**这两条在干什么**：`apt` 是 Debian 系的包管理器（相当于手机上的 `pkg`）。第一条刷新软件清单，第二条装 Python 3 和 pip。
-
-验证：
+#### 两种都验证一下
 
 ```
 python3 --version
 pip3 --version
 ```
 
-看到 `Python 3.10.x` 或更高就对了。注意 Linux 上 pip 通常叫 `pip3`，不是 `pip`。
+看到 `Python 3.x` 和 pip 的版本号就对了。Linux 上 pip 通常叫 `pip3`。
 
-> [!WARN] 如果 `pip3 install xxx` 报 `error: externally-managed-environment`，这是新版 Debian/Ubuntu 的保护机制，不是坏了。两个选择：一是改用 `apt install python3-xxx`（推荐，比如 `python3-pil`）；二是给项目建虚拟环境。**不要加 `--break-system-packages` 硬装**，会把系统 Python 搞乱。
+> [!WARN] 如果 `pip3 install xxx` 报 `error: externally-managed-environment`，这是新版发行版的保护机制，不是坏了。**优先改用系统包**（Alpine 的 `apk add py3-xxx`、Ubuntu 的 `apt install python3-xxx`）。不要加 `--break-system-packages` 硬装，会把系统 Python 搞乱。
 
 ### 8.3 装额外依赖
 
-| 用途 | 命令 |
-|---|---|
-| 控屏（不需要，Linux 上没有安卓） | — |
-| OCR | `sudo apt install -y tesseract-ocr tesseract-ocr-chi-sim poppler-utils python3-pil` |
-| X11 桌面控屏 | `sudo apt install -y xdotool imagemagick` |
-| 反汇编 | `sudo apt install -y radare2` |
+按你的系统选一列：
 
-Linux 上的 tesseract 一般自带中文包（`tesseract-ocr-chi-sim`），不用手动下模型。装完验证：
+| 用途 | Alpine | Ubuntu / Debian |
+|---|---|---|
+| 拉代码 / 下载 | `apk add git curl` | `apt install -y git curl` |
+| OCR | `apk add tesseract-ocr poppler-utils py3-pillow` | `apt install -y tesseract-ocr poppler-utils python3-pil` |
+| OCR 中文包 | `apk add tesseract-ocr-data-chi_sim` | `apt install -y tesseract-ocr-chi-sim` |
+| X11 桌面控屏 | `apk add xdotool imagemagick` | `apt install -y xdotool imagemagick` |
+| 反汇编 | `apk add radare2` | `apt install -y radare2` |
+
+装完验证 OCR 能不能用：
 
 ```
 tesseract --list-langs
 ```
 
-有 `chi_sim` 就行。
+列表里有 `chi_sim` 就行。**Alpine 如果提示找不到 `tesseract-ocr-data-chi_sim` 这个包**（老版本仓库没有），用第 7.3 节的手动下载方式，把模型放进 `~/.tessdata` 一样能用。
 
 ### 8.4 把代码拉下来
 
+git 和 curl 8.3 已经装过了，直接拉：
+
 ```
-sudo apt install -y git curl
 mkdir -p ~/work && cd ~/work
 curl -fL -o update.sh.part "https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/update.sh" && mv update.sh.part update.sh
 sh update.sh
@@ -1483,8 +1501,15 @@ ip addr | grep "inet 192"
 
 `ui.py` 是给 X11 桌面用的另一个工具，能力比 `adui.py` 弱（因为 Linux 没有元素树），主要靠截图 + OCR 定位。
 
+依赖在 8.3 已经装过（`xdotool` + `imagemagick`）。确认一下：
+
 ```
-sudo apt install -y xdotool imagemagick
+which xdotool convert
+```
+
+两个都有路径输出就能用。然后：
+
+```
 python3 ui.py look
 ```
 
