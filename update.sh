@@ -4,7 +4,7 @@
 #   sh update.sh                更新全部脚本
 #   sh update.sh ocr.py         只更新一个（可写多个）
 #   sh update.sh --list         只看本地/远端版本，不下载
-#   sh update.sh --self         更新 update.sh 自身
+#   sh update.sh --self         只更新 update.sh 自身
 #   BASE=... sh update.sh       换镜像
 #
 # 设计原则：
@@ -13,7 +13,7 @@
 #   3. 内容没变就不写盘，不产生多余 .bak
 
 SELF_VER=1
-KIT_FILES="rev.py webchat.py adui.py ocr.py static/app.html static/app.css static/app.js"
+KIT_FILES="rev.py webchat.py adui.py ocr.py static/app.html static/app.css static/app.js MANUAL.md MANUAL.html update.sh"
 DEFAULT_BASE="https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main"
 # BASES 可直接用环境变量指定（多个用换行分隔），指定后不再追加默认镜像
 if [ -n "${BASES:-}" ]; then
@@ -207,10 +207,17 @@ for f in $TARGETS; do
     # 目标目录可能是 static/
     mkdir -p "$(dirname "$f")" 2>/dev/null
 
-    # .py 先过语法检查
+    # 先过语法检查
     case "$f" in
         *.py)
             if ! err=$(pysyntax "$TMP/$f" 2>&1); then
+                bad "$f" "语法错误，拒绝写入：$err"
+                FAILED_CHK="$FAILED_CHK $f"
+                continue
+            fi
+            ;;
+        *.sh)
+            if ! err=$(sh -n "$TMP/$f" 2>&1); then
                 bad "$f" "语法错误，拒绝写入：$err"
                 FAILED_CHK="$FAILED_CHK $f"
                 continue
@@ -227,7 +234,10 @@ for f in $TARGETS; do
         mv "$TMP/$f" "$f" || { bad "$f" "写入失败"; FAILED_CHK="$FAILED_CHK $f"; continue; }
         ok "$f" "新增 $(fsize "$f")"
     fi
-    chmod 644 "$f" 2>/dev/null
+    case "$f" in
+        *.sh) chmod 755 "$f" 2>/dev/null ;;
+        *)    chmod 644 "$f" 2>/dev/null ;;
+    esac
     CHANGED="$CHANGED $f"
 done
 

@@ -2,9 +2,9 @@
 
 > 部署与使用手册
 
-**2026.11.18** · 适用于 Termux（Android 11+）与 Alpine Linux 虚拟机
+**2026.11.19** · 适用于 Termux（Android 11+）与 Alpine Linux 虚拟机
 
-这套东西的目标：在手机上跑一个**能真正动手**的 AI——聊天、执行命令、分析 APK、操控手机屏幕。七个文件，两块环境，彼此独立，坏一个不影响其他。
+这套东西的目标：在手机上跑一个**能真正动手**的 AI——聊天、执行命令、分析 APK、操控手机屏幕。七个脚本加三个前端文件，两块环境，彼此独立，坏一个不影响其他。
 
 
 ## 零、先看这张图
@@ -75,7 +75,7 @@ BASE=https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
 | 文件 | 字节数 | 干什么 | 装在哪 |
 |---|---|---|---|
 | `rev.py` | 28616 | 逆向侦察 | 手机 + 虚拟机 |
-| `webchat.py` | 44670 | 浏览器聊天界面（服务 + agent 循环） | 手机 + 虚拟机 |
+| `webchat.py` | 45068 | 浏览器聊天界面（服务 + agent 循环） | 手机 + 虚拟机 |
 | `static/app.html` | 5110 | 界面结构 | 手机 + 虚拟机 |
 | `static/app.css` | 22706 | 界面样式（含深色模式） | 手机 + 虚拟机 |
 | `static/app.js` | 35216 | 界面逻辑（会话、流式渲染、Markdown） | 手机 + 虚拟机 |
@@ -88,8 +88,10 @@ BASE=https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
 下完校验大小，对不上就是没下完：
 
 ```
-wc -c rev.py webchat.py adui.py ocr.py
+wc -c rev.py webchat.py adui.py ocr.py static/app.html static/app.css static/app.js
 ```
+
+> **`webchat.py` 必须和 `static/` 目录放在同一层。** 只拷 `webchat.py` 过来，打开页面会看到「缺少 static 目录」的提示页——不是程序坏了，是少了三个前端文件。
 
 手机上看这份手册不用下载，直接开在线版：https://dengxiancao.github.io/android-agent-kit/MANUAL.html
 
@@ -100,7 +102,7 @@ wc -c rev.py webchat.py adui.py ocr.py
 
 ### 1.1 一键更新
 
-仓库里带了一个 `update.sh`，以后换新版不用记文件地址、不用逐个 curl：
+仓库里带了一个 `update.sh`，以后换新版不用记文件地址、不用逐个 curl。下面用 `~/work` 举例，**你的脚本放在哪个目录就换成哪个**（有人放在 `~/work-kit`）：
 
 **第一次：取脚本并更新全部**
 
@@ -186,7 +188,7 @@ termux-wake-lock
 
 ### 2.2 下载与校验
 
-见第一章。手机端需要 `rev.py`、`webchat.py`、`adui.py`、`ocr.py` 四个；不装 OCR 也能控屏，只是遇到自绘界面就没辙。
+见第一章。手机端需要 `rev.py`、`webchat.py`、`adui.py`、`ocr.py` 四个，外加 `static/` 里的 `app.html`、`app.css`、`app.js` 三个前端文件；不装 OCR 也能控屏，只是遇到自绘界面就没辙。
 
 
 ### 2.3 启动
