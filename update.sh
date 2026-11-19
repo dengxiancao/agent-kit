@@ -13,7 +13,7 @@
 #   3. 内容没变就不写盘，不产生多余 .bak
 
 SELF_VER=1
-KIT_FILES="rev.py webchat.py adui.py ocr.py static/app.html static/app.css static/app.js MANUAL.md MANUAL.html update.sh"
+KIT_FILES="rev.py webchat.py adui.py ocr.py static/app.html static/app.css static/app.js MANUAL.md MANUAL.html START.md START.html update.sh"
 DEFAULT_BASE="https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main"
 # BASES 可直接用环境变量指定（多个用换行分隔），指定后不再追加默认镜像
 if [ -n "${BASES:-}" ]; then

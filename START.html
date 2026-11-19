@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b6bcb">
+<title>从零开始 · 手机 AI 助手安装手册</title>
+<style>
+:root{--bg:#fff;--fg:#191c20;--muted:#6b7280;--line:#e3e7ec;--soft:#f6f8fa;
+--code-bg:#161b22;--code-fg:#d7dee7;--accent:#0b6bcb;--cbtn:#2d3440;
+--note-bg:#eff5fe;--note-line:#2f7fe0;--warn-bg:#fff6ec;--warn-line:#e8760d}
+@media(prefers-color-scheme:dark){:root{--bg:#14171c;--fg:#e2e7ed;--muted:#98a2b0;
+--line:#282e36;--soft:#1a1f26;--code-bg:#0d1117;--code-fg:#d3dae4;--accent:#5aa9ff;
+--cbtn:#242b34;--note-bg:#12212f;--note-line:#3d8be8;--warn-bg:#271a0e;--warn-line:#f08828}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+font:16px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC","Segoe UI",sans-serif;
+-webkit-text-size-adjust:100%}
+.wrap{max-width:780px;margin:0 auto;padding:0 18px 90px}
+header{position:sticky;top:0;z-index:20;background:var(--bg);
+background:color-mix(in srgb,var(--bg) 92%,transparent);
+backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
+margin:0 -18px;padding:10px 18px;display:flex;align-items:center;gap:10px}
+header .t{font-size:14px;font-weight:650;letter-spacing:.2px;overflow:hidden;
+white-space:nowrap;text-overflow:ellipsis}
+header button{margin-left:auto;flex:0 0 auto;border:1px solid var(--line);background:var(--soft);
+color:var(--fg);font:inherit;font-size:12.5px;padding:5px 11px;border-radius:999px;cursor:pointer}
+nav{display:none;padding:10px 0 4px;border-bottom:1px solid var(--line);margin-bottom:8px}
+nav.on{display:block}
+nav a{display:block;padding:7px 2px;color:var(--fg);text-decoration:none;font-size:14.5px;
+border-bottom:1px dashed var(--line)}
+nav a:last-child{border:0}
+h1{font-size:27px;line-height:1.3;margin:30px 0 6px;letter-spacing:-.4px}
+.sub{color:var(--muted);font-size:13.5px;margin-bottom:26px}
+h2{font-size:20px;margin:44px 0 14px;padding-left:11px;border-left:4px solid var(--accent);
+line-height:1.4;scroll-margin-top:64px}
+h3{font-size:16.5px;margin:26px 0 10px;color:var(--fg)}
+p{margin:11px 0}
+.ic{background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:1px 5px;
+font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px;
+word-break:break-word}
+.cb{margin:13px 0}
+.capbar{display:flex;align-items:center;gap:8px;min-height:20px;margin-bottom:5px}
+.cb .cap{font-size:11.5px;color:var(--muted);letter-spacing:.3px;line-height:1.4}
+.cb pre{margin:0;background:var(--code-bg);color:var(--code-fg);border-radius:10px;
+padding:14px 15px;overflow-x:auto;font:13.2px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+-webkit-overflow-scrolling:touch}
+.cb .cp{margin-left:auto;flex:0 0 auto;background:var(--soft);color:var(--muted);
+border:1px solid var(--line);border-radius:6px;font:inherit;font-size:11.5px;
+padding:2px 10px;cursor:pointer}
+.cb .cp:active{background:var(--line)}
+.tw{overflow-x:auto;margin:14px 0;-webkit-overflow-scrolling:touch}
+@media(max-width:560px){
+  .tw:not(:has(th:nth-child(3))) td{word-break:break-word}
+  .tw:not(:has(th:nth-child(3))) td:first-child{white-space:nowrap;width:26%;padding-right:6px}
+  .tw:has(th:nth-child(3)){overflow:visible}
+  .tw:has(th:nth-child(3)) table{min-width:0;display:block;border:0}
+  .tw:has(th:nth-child(3)) thead{display:none}
+  .tw:has(th:nth-child(3)) tbody{display:block}
+  .tw:has(th:nth-child(3)) tr{display:block;border:1px solid var(--line);border-radius:10px;
+    margin:0 0 9px;padding:8px 13px}
+  .tw:has(th:nth-child(3)) td{display:block;position:relative;border:0;
+    padding:2px 0 2px 72px;font-size:14px;line-height:1.65}
+  .tw:has(th:nth-child(3)) td::before{content:attr(data-label);position:absolute;left:0;top:2px;
+    width:64px;font-size:11.5px;color:var(--muted);letter-spacing:.2px;line-height:1.8}
+  .tw:has(th:nth-child(3)) td:first-child{font-weight:650;font-size:14.5px;
+    padding-bottom:3px;margin-bottom:2px;border-bottom:1px dashed var(--line)}
+  .tw:has(th:nth-child(3)) td:first-child::before{min-width:30px}
+}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:var(--soft);font-weight:650;white-space:nowrap}
+td code{font-size:12.8px}
+.note,.warn{padding:11px 14px;border-radius:0 8px 8px 0;margin:14px 0;font-size:14.5px;
+line-height:1.7;border-left:3px solid}
+.note{background:var(--note-bg);border-color:var(--note-line)}
+.warn{background:var(--warn-bg);border-color:var(--warn-line)}
+ul{margin:11px 0;padding-left:22px}
+li{margin:6px 0}
+hr{border:0;border-top:1px solid var(--line);margin:34px 0}
+footer{color:var(--muted);font-size:12.5px;text-align:center;padding:30px 0 10px}
+
+/* ---------- 零基础版补充 ---------- */
+.lead{font-size:15.5px;color:var(--muted);line-height:1.8;margin:6px 0 22px}
+.ck{background:var(--soft);border:1px solid var(--line);border-left:3px solid #22a06b;
+  border-radius:0 8px 8px 0;padding:10px 14px;margin:14px 0;font-size:14.5px}
+.ck b{color:#17815a}
+.ok{padding:11px 14px;border-radius:0 8px 8px 0;margin:14px 0;font-size:14.5px;
+  line-height:1.7;border-left:3px solid #22a06b;background:#f0fbf6}
+h4{font-size:15px;margin:20px 0 8px;color:var(--fg)}
+h3{font-weight:650}
+.tw td code{word-break:break-all}
+.tip{font-size:13.5px;color:var(--muted);margin:-4px 0 12px}
+.pill{display:inline-block;font-size:11.5px;font-weight:650;color:var(--accent);
+  background:var(--note-bg);border:1px solid var(--note-line);border-radius:999px;
+  padding:1px 9px;margin-right:6px;vertical-align:2px}
+.prog{position:fixed;left:0;top:0;height:2px;background:var(--accent);z-index:40;width:0}
+.totop{position:fixed;right:14px;bottom:18px;width:40px;height:40px;border-radius:50%;
+  border:1px solid var(--line);background:var(--bg);color:var(--muted);font-size:17px;
+  display:none;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.12);
+  cursor:pointer;z-index:30}
+.totop.on{display:flex}
+@media(max-width:560px){
+  h1{font-size:23px}
+  h2{font-size:18px;margin:36px 0 12px}
+  h3{font-size:15.5px;margin:22px 0 8px}
+  .cb pre{font-size:12.4px}
+}
+</style>
+</head>
+<body>
+<div class="prog" id="prog"></div>
+<header>
+  <span class="t">从零开始 · 安装手册</span>
+  <button id="tocbtn" type="button">目录</button>
+</header>
+<nav id="nav"><a href="#sec1">第 0 章 先搞清楚这是什么东西</a><a href="#sec2">第 1 章 装 Termux</a><a href="#sec3">第 2 章 装 Python 环境</a><a href="#sec4">第 3 章 把程序下载到手机</a><a href="#sec5">第 4 章 申请一个 API key</a><a href="#sec6">第 5 章 第一次运行</a><a href="#sec7">第 6 章 让它能操作你的手机屏幕</a><a href="#sec8">第 7 章 让它能看图片和 PDF</a><a href="#sec9">第 8 章 在电脑或虚拟机上再装一份（可选）</a><a href="#sec10">第 9 章 日常怎么用</a><a href="#sec11">第 10 章 出问题怎么查</a><a href="#sec12">附录 A 命令速查</a><a href="#sec13">附录 B 文件清单</a><a href="#sec14">附录 C 安全边界</a></nav>
+<div class="wrap">
+<h1>从零开始：在手机上装一个能自己动手的 AI 助手</h1>
+<sub>零基础版 · 2026.11.19 · 全程约 40 分钟</sub>
+<p>这份文档假设你<b>什么都不会</b>：没用过 Linux，不知道 Python 是什么，看到 <code class="ic">pkg install</code> 这种命令不知道在干什么。</p>
+<p>所以它很啰嗦。每一步都写清楚四件事：</p>
+<ul>
+<li><b>要你做什么</b>（照抄那一行）</li>
+<li><b>这行命令到底在干什么</b>（用大白话）</li>
+<li><b>成功长什么样</b>（你应该看到什么字）</li>
+<li><b>没成功怎么办</b>（最常见的三种错，各自怎么修）</li>
+</ul>
+<p>已经会 Linux 的人不用看这份，去看 <code class="ic">MANUAL.html</code>，那是速查版。</p>
+<div class="note">全程只用手机，不需要电脑。有电脑的话第 8 章讲怎么在电脑上装第二份。</div>
+<h3>读完你能得到什么</h3>
+<p>一个在手机里跑的东西，你打字跟它说话，它自己去执行命令、看文件、点屏幕、识别图片，然后把结果告诉你。</p>
+<p>它住在你自己的手机里，不经过任何第三方服务器，除了调用 AI 模型那一下。</p>
+<hr>
+<hr>
+<h2 id="sec1">第 0 章 先搞清楚这是什么东西</h2>
+<h3>0.1 一句话</h3>
+<p><b>它把你的话翻译成一串命令，在你手机上执行，再把结果说给你听。</b></p>
+<p>你说「看看 download 目录里有什么」，它就去执行 <code class="ic">ls ~/download</code>，然后把输出整理成人话回给你。</p>
+<p>和普通 AI 聊天框的区别只有一个：<b>它真的能动手</b>。普通 AI 只能告诉你「你可以执行 ls 命令」，这个会直接执行。</p>
+<h3>0.2 它能干什么</h3>
+<p>下面这些是真实能跑通的，不是演示：</p>
+<div class="tw"><table><thead><tr><th>你说</th><th>它做</th></tr></thead><tbody><tr><td data-label="你说">「看看我手机还剩多少空间」</td><td data-label="它做">执行 <code class="ic">df -h</code>，告诉你哪个分区快满了</td></tr><tr><td data-label="你说">「download 里有个 apk，帮我看看要哪些权限」</td><td data-label="它做">解析 APK，列出危险权限和用途</td></tr><tr><td data-label="你说">「打开微信，给张三发个消息说我在路上」</td><td data-label="它做">通过 ADB 点开应用、找到联系人、输入文字、点发送</td></tr><tr><td data-label="你说">「这张截图里写了什么」</td><td data-label="它做">截图 + OCR，把文字和坐标都给你</td></tr><tr><td data-label="你说">「把这个 PDF 每页的文字提出来，存成 txt」</td><td data-label="它做">逐页 OCR，写文件</td></tr></tbody></table></div>
+<p>它还能组合：你说「去设置里把深色模式打开」，它会先看当前屏幕有什么，再点「显示」，再点「深色」，每步确认一次。</p>
+<h3>0.3 它不能干什么</h3>
+<p>说清楚边界，省得你怀疑自己装错了：</p>
+<div class="tw"><table><thead><tr><th>做不到</th><th>原因</th></tr></thead><tbody><tr><td data-label="做不到">不解锁手机就能操作</td><td data-label="原因">ADB 需要在开发者选项里授权</td></tr><tr><td data-label="做不到">操作非 Android 手机（iPhone）</td><td data-label="原因">ADB 只对 Android 有效</td></tr><tr><td data-label="做不到">保证每次都点对</td><td data-label="原因">它靠识别屏幕文字定位，界面改版就可能点偏</td></tr><tr><td data-label="做不到">离线使用</td><td data-label="原因">每句话都要调一次 AI 模型，需要联网</td></tr><tr><td data-label="做不到">免费无限用</td><td data-label="原因">按 token 计费，充 10 元能用挺久，但不是零成本</td></tr><tr><td data-label="做不到">装成 App 点图标启动</td><td data-label="原因">它是命令行程序，靠浏览器界面操作</td></tr></tbody></table></div>
+<h3>0.4 你需要准备什么</h3>
+<div class="tw"><table><thead><tr><th>项目</th><th>要求</th><th>说明</th></tr></thead><tbody><tr><td data-label="项目">手机</td><td data-label="要求">Android 11 或更高</td><td data-label="说明">无线调试是 Android 11 才有的功能。10 及以下要先用电脑 USB 连一次</td></tr><tr><td data-label="项目">存储</td><td data-label="要求">留 500 MB</td><td data-label="说明">Termux + Python + 依赖大约占 300 MB</td></tr><tr><td data-label="项目">网络</td><td data-label="要求">能上网</td><td data-label="说明">装依赖、调模型都要</td></tr><tr><td data-label="项目">钱</td><td data-label="要求">充 10 元</td><td data-label="说明">DeepSeek 按量计费，正常聊天一个月用不完</td></tr><tr><td data-label="项目">时间</td><td data-label="要求">首次 40 分钟</td><td data-label="说明">熟悉之后每天启动只要 10 秒</td></tr></tbody></table></div>
+<p>Android 版本怎么看：设置 → 关于手机 → Android 版本。</p>
+<h3>0.5 全程路线图</h3>
+<p>分四段，每段结束都有一个能验证的成果。<b>卡住了就停在那一段，不要往下走</b>，后面的步骤都依赖前面的。</p>
+<div class="tw"><table><thead><tr><th>阶段</th><th>做什么</th><th>完成后你能</th></tr></thead><tbody><tr><td data-label="阶段">第一段（第 1-3 章）</td><td data-label="做什么">装 Termux + Python + 程序</td><td data-label="完成后你能">在手机上跑起命令行工具</td></tr><tr><td data-label="阶段">第二段（第 4-5 章）</td><td data-label="做什么">申请 key + 启动界面</td><td data-label="完成后你能">在浏览器里跟它聊天</td></tr><tr><td data-label="阶段">第三段（第 6 章）</td><td data-label="做什么">配对 ADB</td><td data-label="完成后你能">让它点你的屏幕</td></tr><tr><td data-label="阶段">第四段（第 7 章）</td><td data-label="做什么">装 OCR</td><td data-label="完成后你能">让它读图片里的字</td></tr></tbody></table></div>
+<p>只想要聊天功能的话，做到第二段就够了。</p>
+<h3>0.6 术语表（看不懂就回来查）</h3>
+<div class="tw"><table><thead><tr><th>词</th><th>大白话</th></tr></thead><tbody><tr><td data-label="词"><b>命令行</b></td><td data-label="大白话">不打字用鼠标点，而是打一行字让电脑做事。像跟机器发微信</td></tr><tr><td data-label="词"><b>终端 (Terminal)</b></td><td data-label="大白话">那个黑底白字、能打命令的窗口</td></tr><tr><td data-label="词"><b>Termux</b></td><td data-label="大白话">安卓上的一个 App，装上就有一个终端，还能装 Linux 软件</td></tr><tr><td data-label="词"><b>包 (package)</b></td><td data-label="大白话">一个装好的软件。<code class="ic">pkg install</code> 就是「给我装这个软件」</td></tr><tr><td data-label="词"><b>Python</b></td><td data-label="大白话">一种编程语言，也是一个程序。你得先有它，才能跑 <code class="ic">.py</code> 文件</td></tr><tr><td data-label="词"><b>脚本 (script)</b></td><td data-label="大白话">一个 <code class="ic">.py</code> 结尾的文本文件，里面是让 Python 执行的指令</td></tr><tr><td data-label="词"><b>路径 (path)</b></td><td data-label="大白话">文件的位置。<code class="ic">~/work/rev.py</code> 就是「家目录下 work 文件夹里的 rev.py」</td></tr><tr><td data-label="词"><b><code class="ic">~</code></b></td><td data-label="大白话">代表你的家目录。Termux 里是 <code class="ic">/data/data/com.termux/files/home</code></td></tr><tr><td data-label="词"><b>API key</b></td><td data-label="大白话">一串密码，证明「这次调用是我付的钱」。形如 <code class="ic">sk-xxxxx</code></td></tr><tr><td data-label="词"><b>token</b></td><td data-label="大白话">AI 计费单位，大约 1 个汉字算 1 到 2 个 token</td></tr><tr><td data-label="词"><b>ADB</b></td><td data-label="大白话">Android Debug Bridge，安卓的官方调试通道，能模拟点击和滑动</td></tr><tr><td data-label="词"><b>端口 (port)</b></td><td data-label="大白话">一台机器上有很多服务，端口是门牌号。我们的界面在 8765 号门</td></tr></tbody></table></div>
+<hr>
+<h2 id="sec2">第 1 章 装 Termux</h2>
+<h3>1.1 它是什么</h3>
+<p>Termux 是一个安卓 App，但打开之后不是图形界面，而是一个<b>终端</b>——黑底白字，等你在光标处打命令。</p>
+<p>它的价值在于：它自带一整套 Linux 工具（<code class="ic">ls</code>、<code class="ic">cat</code>、<code class="ic">curl</code>、<code class="ic">python</code>……），装完相当于在手机里塞了一台小电脑，而且不需要 root。</p>
+<h3>1.2 从哪里下载（这里容易装错，看清楚）</h3>
+<p><b>不要从华为应用市场、小米应用商店、应用宝下载。</b> 那些版本大多停留在 2020 年，目标 API 版本太低，安卓 12 以上直接装不上，或者装上了 <code class="ic">pkg</code> 命令一跑就报错。</p>
+<p>只用下面两个来源之一：</p>
+<div class="tw"><table><thead><tr><th>来源</th><th>地址</th><th>说明</th></tr></thead><tbody><tr><td data-label="来源">F-Droid（推荐）</td><td data-label="地址"><code class="ic">f-droid.org/packages/com.termux</code></td><td data-label="说明">开源应用商店，页面往下拉有「下载 APK」</td></tr><tr><td data-label="来源">GitHub Releases</td><td data-label="地址"><code class="ic">github.com/termux/termux-app/releases</code></td><td data-label="说明">找文件名里带 <code class="ic">universal</code> 的那个（形如 <code class="ic">termux-app_v0.118.x-universal.apk</code>），它适配所有机型</td></tr></tbody></table></div>
+<p>下载完点开 APK，系统会提示「未知来源应用」，允许一次即可。装完桌面会出现一个黑底 <code class="ic">&gt;_</code> 图标的 App。</p>
+<div class="warn">如果你之前装过应用商店版本，<b>先卸载再装</b>。两个版本签名不同，覆盖安装会失败，而且旧版本残留的配置会让新版本行为诡异。</div>
+<h3>1.3 第一次打开</h3>
+<p>点图标进去，你会看到类似这样的一屏：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>Welcome to Termux!
+
+Docs:       https://termux.dev/docs
+Donate:     https://termux.dev/donate
+Community:  https://termux.dev/community
+
+Working with packages:
+ - Search:  pkg search &lt;query&gt;
+ - Install: pkg install &lt;package&gt;
+ - Upgrade: pkg upgrade
+
+~
+$</code></pre></div>
+<p>最后那个 <code class="ic">$</code> 就是「等你输入」的意思。光标在那儿闪。</p>
+<p><b>这时候不要急着打命令</b>，先花两分钟认识键盘。</p>
+<h3>1.4 认识这个界面</h3>
+<p>手机上没有实体键盘，Termux 的输入方式和普通 App 不一样：</p>
+<div class="tw"><table><thead><tr><th>你想做</th><th>怎么做</th></tr></thead><tbody><tr><td data-label="你想做">输入命令</td><td data-label="怎么做">直接点屏幕下方弹出的输入法，和平常打字一样</td></tr><tr><td data-label="你想做"><b>粘贴</b></td><td data-label="怎么做">长按屏幕空白处 → 弹出菜单选「Paste」。<b>不要去点输入法上的粘贴，经常无效</b></td></tr><tr><td data-label="你想做">复制屏幕上的字</td><td data-label="怎么做">长按要复制的文字，拖动选择范围 → 点「Copy」</td></tr><tr><td data-label="你想做">打出 <code class="ic">Ctrl</code> 组合键</td><td data-label="怎么做">音量减 + 字母键。比如 <code class="ic">Ctrl+C</code> 就是音量减 + C</td></tr><tr><td data-label="你想做">上下翻看历史输出</td><td data-label="怎么做">手指在屏幕上上下滑</td></tr><tr><td data-label="你想做">调出命令历史的上一行</td><td data-label="怎么做">音量加 + 方向键（有些机型没反应，直接用 ↑ 更稳）</td></tr><tr><td data-label="你想做">切换成英文输入法</td><td data-label="怎么做">命令必须用英文符号，中文输入法会把 <code class="ic">&quot;</code> 变成 <code class="ic">”</code>，导致报错</td></tr></tbody></table></div>
+<div class="warn">这一条踩过的人最多：<b>命令里的引号、括号、斜杠必须是英文半角</b>。中文输入法下打出来的 <code class="ic">“”</code> 和 <code class="ic">（）</code> 会让命令直接失败，报错信息还很难懂。输入命令前先把输入法切到英文。</div>
+<p><b>放大字号</b>（可选，眼睛累的话）：双指在屏幕上捏合放大，和看图片一样。这只影响显示，不影响命令。</p>
+<h3>1.5 必做的三条设置</h3>
+<p>按顺序执行，一条一条来，等上一条跑完再打下一条。</p>
+<h4>第一条：换成国内镜像源</h4>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>termux-change-repo</code></pre></div>
+<p><b>这条命令在干什么</b>：打开一个文字界面的选择菜单，把「去哪里下载软件」从国外服务器改成国内镜像，下载速度能从 10 KB/s 变成几 MB/s。</p>
+<p>执行后会看到这样的选择界面：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>[*] Mirror groups
+[ ] Mirror
+
+&lt; OK &gt;   &lt; Cancel &gt;</code></pre></div>
+<p>操作方式<b>反直觉</b>，注意看：</p>
+<ol>
+<li>用<b>方向键</b>（屏幕键盘上的上下箭头）把光标移到 <code class="ic">Mirror groups</code></li>
+<li>按<b>回车</b>（输入法上的回车键，不是屏幕上的换行）</li>
+<li>进到下一屏，列出 <code class="ic">Grimler</code>、<code class="ic">Tsinghua</code>、<code class="ic">USTC</code> 等，选 <code class="ic">Tsinghua</code>（清华）或 <code class="ic">USTC</code>（中科大）</li>
+<li>再按回车确认</li>
+<li>出现 <code class="ic">&lt; OK &gt;</code> 时按回车退出</li>
+</ol>
+<p>成功的话不会打印什么，直接回到 <code class="ic">$</code> 提示符。</p>
+<div class="note">这步也可以跳过。跳过的话后面装软件会很慢，但不会失败。网速本来就快（比如连了 WiFi 且能直连国外）就不用改。</div>
+<h4>第二条：更新软件列表</h4>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>pkg update</code></pre></div>
+<p><b>这条命令在干什么</b>：去服务器拉一份「现在有哪些软件、各自什么版本」的清单。它<b>不装任何东西</b>，只是刷新目录。</p>
+<p>跑起来会刷很多行，中间可能停下来问你：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>Do you want to continue? [Y/n]</code></pre></div>
+<p>打 <code class="ic">y</code> 然后回车。</p>
+<p><b>成功的样子</b>是最后回到 <code class="ic">$</code>，中间没有大片红色 <code class="ic">E:</code> 开头的错误。</p>
+<p><b>失败怎么办</b>：</p>
+<div class="tw"><table><thead><tr><th>报错</th><th>原因</th><th>怎么修</th></tr></thead><tbody><tr><td data-label="报错"><code class="ic">Unable to locate package</code></td><td data-label="原因">源没配好</td><td data-label="怎么修">重跑 <code class="ic">termux-change-repo</code>，选清华</td></tr><tr><td data-label="报错"><code class="ic">Some index files failed to download</code></td><td data-label="原因">网络断了</td><td data-label="怎么修">换个网（WiFi 换流量）重跑</td></tr><tr><td data-label="报错"><code class="ic">E: Repository ... is not signed</code></td><td data-label="原因">源配置坏了</td><td data-label="怎么修">执行 <code class="ic">rm -rf /data/data/com.termux/files/usr/var/lib/apt/lists/*</code> 再 <code class="ic">pkg update</code></td></tr><tr><td data-label="报错">卡在 <code class="ic">Reading package lists...</code> 很久</td><td data-label="原因">正常，在解压</td><td data-label="怎么修">等 1-2 分钟</td></tr></tbody></table></div>
+<h4>第三条：防止后台被杀</h4>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>termux-wake-lock</code></pre></div>
+<p><b>这条命令在干什么</b>：告诉安卓系统「别把我这个 App 睡死，我还在干活」。不执行的话，你一切换到别的 App，Termux 就被系统冻结，正在跑的任务直接中断。</p>
+<p>执行成功没有任何输出，回到 <code class="ic">$</code>。</p>
+<p>还要去系统设置里给它开绿灯（<b>这步不能省，小米/华为/OPPO 尤其严</b>）：</p>
+<div class="tw"><table><thead><tr><th>品牌</th><th>路径</th></tr></thead><tbody><tr><td data-label="品牌">小米 / Redmi</td><td data-label="路径">设置 → 应用设置 → 应用管理 → Termux → <b>省电策略</b>选「无限制」；同页 → <b>自启动</b>打开</td></tr><tr><td data-label="品牌">华为 / 荣耀</td><td data-label="路径">设置 → 应用 → 应用启动管理 → Termux → 关掉「自动管理」，手动勾选三项允许</td></tr><tr><td data-label="品牌">OPPO / 一加</td><td data-label="路径">设置 → 电池 → 应用耗电管理 → Termux → 允许「后台运行」</td></tr><tr><td data-label="品牌">vivo</td><td data-label="路径">设置 → 电池 → 后台耗电管理 → Termux → 允许后台高耗电</td></tr><tr><td data-label="品牌">三星</td><td data-label="路径">设置 → 电池 → 后台使用限制 → 从「睡眠应用」里移除 Termux</td></tr></tbody></table></div>
+<div class="warn"><code class="ic">termux-wake-lock</code> <b>每次重启手机都要重新执行一次</b>。它不是永久设置，是一个临时锁。嫌麻烦可以把它写进启动脚本，但新手先手动执行。</div>
+<h3>1.6 检查点</h3>
+<p>到这里，Termux 应该满足：</p>
+<ul>
+<li>输入 <code class="ic">pkg update</code> 能正常跑完，不报红</li>
+<li>输入 <code class="ic">termux-wake-lock</code> 没反应（没反应就是对的）</li>
+<li>切到微信再切回来，Termux 还在原来的位置，没有重新加载</li>
+</ul>
+<p>三条都满足，进第 2 章。</p>
+<hr>
+<h2 id="sec3">第 2 章 装 Python 环境</h2>
+<p>这一章是重点。Python 装不好，后面全部白搭。</p>
+<h3>2.1 Python 是什么，为什么必须装</h3>
+<p><b>大白话</b>：<code class="ic">rev.py</code>、<code class="ic">webchat.py</code> 这些文件不是能直接双击运行的程序，它们是一堆<b>给 Python 看的指令</b>。就像一份菜谱，得有厨师才能变成菜。</p>
+<p>Python 就是那个厨师。没装它，你输入 <code class="ic">python3 webchat.py</code> 只会得到「command not found」。</p>
+<p>它有两部分：</p>
+<div class="tw"><table><thead><tr><th>部件</th><th>作用</th><th>怎么验证</th></tr></thead><tbody><tr><td data-label="部件"><b>解释器</b> <code class="ic">python3</code></td><td data-label="作用">读 <code class="ic">.py</code> 文件并执行</td><td data-label="怎么验证"><code class="ic">python3 --version</code></td></tr><tr><td data-label="部件"><b>包管理器</b> <code class="ic">pip</code></td><td data-label="作用">给 Python 装第三方库</td><td data-label="怎么验证"><code class="ic">pip --version</code></td></tr></tbody></table></div>
+<p>我们这个项目<b>只用标准库</b>，理论上不需要 pip 装任何东西。但 OCR 那一章要装 <code class="ic">pillow</code>（处理图片），所以 pip 也得能用。</p>
+<h3>2.2 装解释器和 pip</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>pkg install -y python</code></pre></div>
+<p><b>这条命令在干什么</b>：从镜像源下载 Python 3 的解释器，顺带把 <code class="ic">pip</code> 一起装上（Termux 的 python 包自带 pip）。<code class="ic">-y</code> 表示「所有问我要不要确认的地方，一律回答 yes」，省得你一路打 y。</p>
+<p>会看到类似这样的过程：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>Testing the available space...
+Building dependency tree...
+The following NEW packages will be installed:
+  python
+...
+Unpacking python (3.12.x) ...
+Setting up python (3.12.x) ...</code></pre></div>
+<p><b>成功的样子</b>：最后回到 <code class="ic">$</code>，没有 <code class="ic">E:</code> 开头的红字。</p>
+<p><b>失败怎么办</b>：</p>
+<div class="tw"><table><thead><tr><th>报错</th><th>原因</th><th>怎么修</th></tr></thead><tbody><tr><td data-label="报错"><code class="ic">E: Unable to locate package python</code></td><td data-label="原因">软件列表没更新</td><td data-label="怎么修">先 <code class="ic">pkg update</code>，再重试</td></tr><tr><td data-label="报错"><code class="ic">E: Sub-process ... returned an error code (1)</code></td><td data-label="原因">上次没装干净</td><td data-label="怎么修"><code class="ic">pkg install -f python</code> 修复依赖</td></tr><tr><td data-label="报错"><code class="ic">No space left on device</code></td><td data-label="原因">存储满了</td><td data-label="怎么修"><code class="ic">df -h</code> 看哪个分区满，清点空间再来</td></tr><tr><td data-label="报错">卡在 <code class="ic">Unpacking</code> 一动不动</td><td data-label="原因">下载中断</td><td data-label="怎么修">Ctrl+C（音量减+C）中断，重跑同一条命令，它会接着下</td></tr></tbody></table></div>
+<h3>2.3 验证</h3>
+<p>分两条命令，逐条执行：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 --version</code></pre></div>
+<p>应该看到：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>Python 3.12.x</code></pre></div>
+<p>版本号 <b>3.8 以上就行</b>，Termux 现在默认给 3.12。数字不一样没关系，只要不低于 3.8。</p>
+<p>接着：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>pip --version</code></pre></div>
+<p>应该看到类似：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>pip 24.x from /data/data/com.termux/files/usr/lib/python3.12/site-packages/pip (python 3.12)</code></pre></div>
+<p><b>只要出现 <code class="ic">pip</code> 和版本号就算成功</b>，路径不用管。</p>
+<div class="note">如果 <code class="ic">python3</code> 有反应但 <code class="ic">pip</code> 报 <code class="ic">command not found</code>，单独装一次：<code class="ic">pkg install -y python-pip</code>。</div>
+<h3>2.4 装本项目要用的额外依赖</h3>
+<p>分三组，按需装。<b>只聊天不控屏、不 OCR 的话，这步可以全部跳过</b>，程序本身零依赖就能跑。</p>
+<h4>A 组：控屏（必装，如果要让它点屏幕）</h4>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>pkg install -y android-tools</code></pre></div>
+<p><b>干什么</b>：装 <code class="ic">adb</code>，就是让程序能模拟点击、滑动、截屏的那个工具。约 10 MB。</p>
+<p>验证：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>adb version</code></pre></div>
+<p>应该看到 <code class="ic">Android Debug Bridge version 1.0.41</code> 或更高。</p>
+<div class="warn">如果版本低于 1.0.41，配对时会报 <code class="ic">unknown command</code>，必须 <code class="ic">pkg upgrade android-tools</code>。Termux 镜像里的版本一般已经是新的。</div>
+<h4>B 组：OCR（要读图片/PDF 才装）</h4>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>pkg install -y tesseract poppler python-pillow</code></pre></div>
+<p><b>这三个分别是什么</b>：</p>
+<div class="tw"><table><thead><tr><th>包</th><th>作用</th><th>大小</th></tr></thead><tbody><tr><td data-label="包"><code class="ic">tesseract</code></td><td data-label="作用">识别引擎本体，把图片里的字形变成文字</td><td data-label="大小">约 30 MB</td></tr><tr><td data-label="包"><code class="ic">poppler</code></td><td data-label="作用">提供 <code class="ic">pdftoppm</code>，把 PDF 每一页转成图片再识别</td><td data-label="大小">约 15 MB</td></tr><tr><td data-label="包"><code class="ic">python-pillow</code></td><td data-label="作用">Python 的图片处理库，<code class="ic">ocr.py</code> 用它做缩放和裁剪</td><td data-label="大小">约 8 MB</td></tr></tbody></table></div>
+<div class="warn"><b>不要用 <code class="ic">pip install pillow</code>。</b> 那会现场编译 C 代码，手机上大概率失败，或者卡 10 分钟。Termux 官方已经把编译好的包命名为 <code class="ic">python-pillow</code>，用 <code class="ic">pkg install</code> 一步到位。</div>
+<h4>C 组：其他可选</h4>
+<div class="tw"><table><thead><tr><th>命令</th><th>什么时候需要</th></tr></thead><tbody><tr><td data-label="命令"><code class="ic">pkg install -y radare2</code></td><td data-label="什么时候需要">要用 <code class="ic">rev.py r2</code> 反汇编</td></tr><tr><td data-label="命令"><code class="ic">pkg install -y git</code></td><td data-label="什么时候需要">想用 <code class="ic">git clone</code> 拉代码，而不是 curl 下文件</td></tr><tr><td data-label="命令"><code class="ic">pkg install -y procps</code></td><td data-label="什么时候需要">想用 <code class="ic">pkill</code> 结束进程（Termux 默认没有）</td></tr></tbody></table></div>
+<h3>2.5 不要做的事</h3>
+<div class="tw"><table><thead><tr><th>别做</th><th>为什么</th></tr></thead><tbody><tr><td data-label="别做"><code class="ic">pkg upgrade</code></td><td data-label="为什么">全量升级几百 MB，耗时半小时以上，中途断网会把系统搞坏。只装缺的包就够了</td></tr><tr><td data-label="别做"><code class="ic">pip install --upgrade pip</code></td><td data-label="为什么">Termux 的 pip 和系统包管理器有绑定，升级后可能装不上任何东西</td></tr><tr><td data-label="别做">从应用商店装「Python 编辑器」类 App</td><td data-label="为什么">那些是另一个 App，和 Termux 里的 Python 半毛钱关系没有</td></tr><tr><td data-label="别做"><code class="ic">apt install</code></td><td data-label="为什么">Termux 用的就是 <code class="ic">pkg</code>，<code class="ic">apt</code> 能用但路径和参数有差异，新手别碰</td></tr></tbody></table></div>
+<h3>2.6 检查点</h3>
+<p>逐条执行，全部通过再往下：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 --version
+pip --version
+adb version</code></pre></div>
+<p>前两条必须有输出。第三条如果第 2.4 节 A 组装了才有，没装会报 <code class="ic">command not found</code>，正常。</p>
+<p>再跑一个真正的 Python：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 -c &quot;print(&#x27;环境正常&#x27;)&quot;</code></pre></div>
+<p>应该原样输出：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>环境正常</code></pre></div>
+<p>这行不通，说明解释器有问题（不是路径问题就是装坏了），先解决它，别往第 3 章走。</p>
+<hr>
+<h2 id="sec4">第 3 章 把程序下载到手机</h2>
+<h3>3.1 先搞清楚「装在哪」</h3>
+<p>Termux 里所有的操作都在一个「当前目录」里发生。你可以用这条命令看看自己在哪：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>pwd</code></pre></div>
+<p>会输出：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>/data/data/com.termux/files/home</code></pre></div>
+<p>这就是 Termux 的<b>家目录</b>，等价于 <code class="ic">~</code>。你每次新开 Termux 都站在这里。</p>
+<p>我们要建一个专门放程序的文件夹：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>mkdir -p ~/work
+cd ~/work</code></pre></div>
+<p><b>这两条在干什么</b>：</p>
+<ul>
+<li><code class="ic">mkdir -p ~/work</code>：创建 <code class="ic">work</code> 文件夹。<code class="ic">-p</code> 的意思是「如果已经存在就别报错」</li>
+<li><code class="ic">cd ~/work</code>：把当前目录切到 <code class="ic">work</code> 里。<code class="ic">cd</code> 是 change directory</li>
+</ul>
+<p>再 <code class="ic">pwd</code> 一次，应该变成：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>/data/data/com.termux/files/home/work</code></pre></div>
+<p>后面的下载、启动，<b>全部要在这个目录里做</b>。忘了在哪就先 <code class="ic">pwd</code>。</p>
+<div class="note">目录名叫 <code class="ic">work</code> 只是习惯，叫 <code class="ic">abc</code> 也行。但整份手册和你以后看到的教程都用 <code class="ic">~/work</code>，跟着用省事。</div>
+<h3>3.2 方式 A：一句命令全下（推荐）</h3>
+<p>这个仓库带了一个更新脚本 <code class="ic">update.sh</code>，它知道所有文件在哪、下完会校验、失败会自己换镜像。</p>
+<p><b>第一步，把脚本本身下下来</b>：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>curl -fL -o update.sh.part &quot;https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/update.sh&quot; &amp;&amp; mv update.sh.part update.sh</code></pre></div>
+<p><b>这行在干什么</b>：<code class="ic">curl</code> 是下载工具。<code class="ic">ghfast.top/</code> 是国内镜像前缀，原地址整段接在它后面。<code class="ic">-f</code> 表示「服务器返回错误就直接失败」，<code class="ic">-L</code> 表示「遇到跳转跟着走」。</p>
+<p><code class="ic">-o update.sh.part</code> 是<b>先存成临时名字</b>，<code class="ic">&amp;&amp;</code> 意思是「前一条成功了才执行后面」，<code class="ic">mv</code> 再改名。</p>
+<p>为什么不直接 <code class="ic">-o update.sh</code>：万一网络断了，<code class="ic">curl</code> 会留下一个 0 字节的空文件，把你的旧脚本覆盖成废文件。<b>这个坑踩一次就够</b>，所以所有下载都先写 <code class="ic">.part</code>。</p>
+<p><b>第二步，跑它</b>：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>sh update.sh</code></pre></div>
+<p><b>这条在干什么</b>：用 <code class="ic">sh</code> 解释器执行 <code class="ic">update.sh</code>，它会去仓库把 <code class="ic">rev.py</code>、<code class="ic">webchat.py</code>、<code class="ic">adui.py</code>、<code class="ic">ocr.py</code>、手册、<code class="ic">static/</code> 三件套全部拉下来。</p>
+<p>成功会看到：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>android-agent-kit 更新
+目录  /data/data/com.termux/files/home/work
+镜像  ghfast.top（失败自动换下一个）
+
+  ✓ rev.py        新增 28616
+  ✓ webchat.py    新增 45068
+  ✓ adui.py       新增 47304
+  ✓ ocr.py        新增 33777
+  ✓ static/app.html 新增 5110
+  ✓ static/app.css  新增 22706
+  ✓ static/app.js   新增 35216
+  ✓ MANUAL.md       新增 38124
+  ✓ MANUAL.html     新增 69250
+  ✓ update.sh       新增 8559
+
+已更新： rev.py webchat.py ...</code></pre></div>
+<p><b>看到「新增」就是成功。</b> 数字是你机器上实际下到的字节数，和上面不完全一致没关系（版本更新会变大小），但<b>不应该是 0</b>。</p>
+<p>以后换新版，只要在这个目录里执行一句：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>sh update.sh</code></pre></div>
+<p>它自己会比对内容，没变的不写盘，变了的才替换，还会把旧的存成 <code class="ic">.bak</code>。</p>
+<h3>3.3 方式 B：手动逐个下载（脚本抽风时用）</h3>
+<p><code class="ic">update.sh</code> 也下不下来的时候（镜像全挂），用这段。<b>整段复制，一次粘贴</b>：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>BASE=&quot;https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main&quot;
+
+for f in rev.py webchat.py adui.py ocr.py update.sh; do
+  curl -fsSL -o &quot;$f.part&quot; &quot;$BASE/$f&quot; &amp;&amp; [ -s &quot;$f.part&quot; ] &amp;&amp; mv &quot;$f.part&quot; &quot;$f&quot; &amp;&amp; echo &quot;ok $f&quot;
+done
+
+mkdir -p static
+
+for f in app.html app.css app.js; do
+  curl -fsSL -o &quot;static/$f.part&quot; &quot;$BASE/static/$f&quot; &amp;&amp; [ -s &quot;static/$f.part&quot; ] &amp;&amp; mv &quot;static/$f.part&quot; &quot;static/$f&quot; &amp;&amp; echo &quot;ok static/$f&quot;
+done</code></pre></div>
+<p><b>这段在干什么</b>：<code class="ic">BASE</code> 是把镜像前缀存成一个变量，省得写八遍。<code class="ic">for f in ...</code> 是一个循环，把括号里每个名字依次当成 <code class="ic">f</code> 执行中间那段。<code class="ic">[ -s &quot;$f.part&quot; ]</code> 是判断「这个文件存在且不是空的」。</p>
+<p>逐行输出 8 个 <code class="ic">ok</code> 就成功了。</p>
+<div class="warn">单个文件下载失败时，最稳的办法是手动重跑对应那一行。不要用 <code class="ic">wget -O 目标文件</code>，它在失败时会先把目标文件清空，把好的版本毁掉。</div>
+<h3>3.4 方式 C：整仓克隆（有 git 的话最省事）</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>pkg install -y git
+git clone --depth 1 https://ghfast.top/https://github.com/dengxiancao/android-agent-kit ~/work-kit</code></pre></div>
+<p>这会把整个仓库（含手册、原型图）拉到 <code class="ic">~/work-kit</code>。以后更新：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>cd ~/work-kit &amp;&amp; git pull</code></pre></div>
+<p>用这种方式的话，<b>记住你的目录是 <code class="ic">~/work-kit</code></b>，后面所有命令里的 <code class="ic">~/work</code> 都要换掉。</p>
+<h3>3.5 校验：数字对不上就是没下完</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>cd ~/work
+wc -c rev.py webchat.py adui.py ocr.py static/app.html static/app.css static/app.js</code></pre></div>
+<p>输出七行数字。对照下表，<b>你自己的数字比表里小就说明下截断了</b>，重下那一个：</p>
+<div class="tw"><table><thead><tr><th>文件</th><th>参考字节数</th></tr></thead><tbody><tr><td data-label="文件"><code class="ic">rev.py</code></td><td data-label="参考字节数">28616</td></tr><tr><td data-label="文件"><code class="ic">webchat.py</code></td><td data-label="参考字节数">45068</td></tr><tr><td data-label="文件"><code class="ic">adui.py</code></td><td data-label="参考字节数">47304</td></tr><tr><td data-label="文件"><code class="ic">ocr.py</code></td><td data-label="参考字节数">33777</td></tr><tr><td data-label="文件"><code class="ic">static/app.html</code></td><td data-label="参考字节数">5110</td></tr><tr><td data-label="文件"><code class="ic">static/app.css</code></td><td data-label="参考字节数">22706</td></tr><tr><td data-label="文件"><code class="ic">static/app.js</code></td><td data-label="参考字节数">35216</td></tr></tbody></table></div>
+<p>再确认目录结构长这样：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>ls -R ~/work</code></pre></div>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>/data/data/com.termux/files/home/work:
+adui.py  MANUAL.html  MANUAL.md  ocr.py  rev.py  static  update.sh  webchat.py
+
+/data/data/com.termux/files/home/work/static:
+app.css  app.html  app.js</code></pre></div>
+<p><b><code class="ic">static</code> 必须在 <code class="ic">work</code> 里面，和 <code class="ic">webchat.py</code> 平级。</b> 少了它，打开网页会看到一行「缺少 static 目录」。</p>
+<h3>3.6 每个文件是干什么的</h3>
+<div class="tw"><table><thead><tr><th>文件</th><th>干什么</th><th>必须吗</th></tr></thead><tbody><tr><td data-label="文件"><code class="ic">webchat.py</code></td><td data-label="干什么">主体：起网页服务 + 跟 AI 对话 + 执行工具</td><td data-label="必须吗"><b>必须</b></td></tr><tr><td data-label="文件"><code class="ic">static/app.html</code></td><td data-label="干什么">网页的骨架</td><td data-label="必须吗"><b>必须</b></td></tr><tr><td data-label="文件"><code class="ic">static/app.css</code></td><td data-label="干什么">网页的样式（含深色模式）</td><td data-label="必须吗"><b>必须</b></td></tr><tr><td data-label="文件"><code class="ic">static/app.js</code></td><td data-label="干什么">网页的交互（流式输出、会话切换）</td><td data-label="必须吗"><b>必须</b></td></tr><tr><td data-label="文件"><code class="ic">adui.py</code></td><td data-label="干什么">操作手机屏幕（点击、滑动、截图）</td><td data-label="必须吗">要控屏就装</td></tr><tr><td data-label="文件"><code class="ic">ocr.py</code></td><td data-label="干什么">识别图片和 PDF 里的文字</td><td data-label="必须吗">要读图就装</td></tr><tr><td data-label="文件"><code class="ic">rev.py</code></td><td data-label="干什么">分析 APK、so、exe 等二进制文件</td><td data-label="必须吗">做逆向才用</td></tr><tr><td data-label="文件"><code class="ic">update.sh</code></td><td data-label="干什么">一键更新</td><td data-label="必须吗">建议留着</td></tr><tr><td data-label="文件"><code class="ic">MANUAL.*</code></td><td data-label="干什么">手册本身</td><td data-label="必须吗">可选</td></tr></tbody></table></div>
+<hr>
+<h2 id="sec5">第 4 章 申请一个 API key</h2>
+<h3>4.1 这个东西是什么</h3>
+<p>程序本身不会思考，它每说一句话都要把上下文发给远端的 AI 模型，模型算完把结果发回来。</p>
+<p><b>API key 就是这次调用的身份证 + 付款凭证</b>：模型服务商靠它认出「这是谁在调用」，然后从那个账户扣钱。</p>
+<p>所以：</p>
+<ul>
+<li>没有 key，程序启动会直接退出，提示「缺少 DEEPSEEK_KEY」</li>
+<li>key 泄露，别人可以用你的 key 花你的钱</li>
+<li>key 一般只显示一次，页面关掉就看不到了</li>
+</ul>
+<h3>4.2 注册和充值</h3>
+<p>打开 https://platform.deepseek.com ，用手机号注册并登录。</p>
+<p>然后<b>先充值再创建 key</b>，顺序反了会在第一次对话时收到余额不足的报错：</p>
+<ol>
+<li>左侧菜单找「充值」或「账户余额」</li>
+<li>充 <b>10 元</b>试水。按现在的价格，正常强度聊天一个月用不完</li>
+<li>确认余额显示 10 元</li>
+</ol>
+<div class="note">计费方式是「按 token 用量扣」。一句话大约消耗几百到几千 token，具体价格随官方调整，看充值页上的实时说明。10 元差不多够你折腾一两个月。</div>
+<h3>4.3 创建 key</h3>
+<ol>
+<li>左侧菜单进「API keys」</li>
+<li>点「创建 API key」，名字随便填（比如 <code class="ic">phone</code>）</li>
+<li><b>立刻复制弹出来的那串字符</b>，形如 <code class="ic">sk-</code> 开头、后面三十多位</li>
+<li>存到一个临时地方（记事本、微信文件传输助手都行）</li>
+</ol>
+<p>页面关掉之后就再也看不到完整 key 了，只能删了重建。<b>先复制，再关页面。</b></p>
+<h3>4.4 把 key 存到手机里（一次配置，永久生效）</h3>
+<p>不要把 key 直接写在命令里。那种写法（<code class="ic">DEEPSEEK_KEY=sk-xxx python3 webchat.py</code>）每次重启手机就失效，而且会留在命令历史里被人翻到。</p>
+<p>正确做法是写进配置文件。<b>三条命令，逐条执行</b>：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>mkdir -p ~/.config/webchat</code></pre></div>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>echo &#x27;DEEPSEEK_KEY=sk-把这里换成你自己的key&#x27; &gt; ~/.config/webchat/env</code></pre></div>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>chmod 600 ~/.config/webchat/env</code></pre></div>
+<p><b>这三条在干什么</b>：</p>
+<ul>
+<li>第一条：建一个隐藏配置目录（<code class="ic">~/.config/webchat</code>）</li>
+<li>第二条：把 <code class="ic">DEEPSEEK_KEY=...</code> 这一行写进 <code class="ic">env</code> 文件。<b>把 <code class="ic">sk-把这里换成你自己的key</code> 整段替换成你复制的 key</b>，单引号要保留</li>
+<li>第三条：把文件权限改成「只有你自己能读」。安卓上多用户或装了文件管理器的情况下，别的 App 读不到</li>
+</ul>
+<p>验证写对了没有：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>cat ~/.config/webchat/env</code></pre></div>
+<p>应该原样显示你写的那一行。<b>key 不要发截图到群里</b>，这一步自己看一眼就行。</p>
+<h3>4.5 这个文件还能写什么</h3>
+<p><code class="ic">env</code> 文件里可以写多行，一行一个设置。常用的四个：</p>
+<div class="tw"><table><thead><tr><th>键</th><th>默认值</th><th>什么时候要改</th></tr></thead><tbody><tr><td data-label="键"><code class="ic">DEEPSEEK_KEY</code></td><td data-label="默认值">无</td><td data-label="什么时候要改"><b>必填</b></td></tr><tr><td data-label="键"><code class="ic">AGENT_WORK</code></td><td data-label="默认值"><code class="ic">~/work</code></td><td data-label="什么时候要改">程序放在 <code class="ic">~/work-kit</code> 时改成那</td></tr><tr><td data-label="键"><code class="ic">HOST</code></td><td data-label="默认值"><code class="ic">127.0.0.1</code></td><td data-label="什么时候要改">想让电脑/平板访问手机上的服务，改成 <code class="ic">0.0.0.0</code></td></tr><tr><td data-label="键"><code class="ic">PORT</code></td><td data-label="默认值"><code class="ic">8765</code></td><td data-label="什么时候要改">端口被占用时换一个，比如 <code class="ic">8800</code></td></tr><tr><td data-label="键"><code class="ic">AGENT_MAX_TURNS</code></td><td data-label="默认值"><code class="ic">100</code></td><td data-label="什么时候要改">单条消息最多执行几步，一般不用动</td></tr></tbody></table></div>
+<p>多行的写法就是多写几行：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>DEEPSEEK_KEY=sk-xxxxxx
+AGENT_WORK=/data/data/com.termux/files/home/work
+HOST=0.0.0.0</code></pre></div>
+<div class="warn">这个文件里是明文 key。三件事别做：不要放进 git 仓库、不要截图发人、不要传到网盘。换手机迁移时也不要整个目录打包发给别人。</div>
+<h3>4.6 检查点</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>ls -l ~/.config/webchat/env</code></pre></div>
+<p>看到权限是 <code class="ic">-rw-------</code>（就是刚才 <code class="ic">chmod 600</code> 的结果），属主是你自己，就对了。</p>
+<p>再看一眼内容长度合理（不会只有几个字符）：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>wc -c ~/.config/webchat/env</code></pre></div>
+<p><code class="ic">sk-</code> 开头的 key 大概 35 个字符，加上 <code class="ic">DEEPSEEK_KEY=</code> 一共 48 左右。差太多就是复制漏了。</p>
+<hr>
+<h2 id="sec6">第 5 章 第一次运行</h2>
+<h3>5.1 先不花钱，看看界面长什么样</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>cd ~/work
+python3 webchat.py --mock</code></pre></div>
+<p><b>这条在干什么</b>：<code class="ic">--mock</code> 是「演习模式」。它不调用任何 AI 接口，用预置的假数据回复你，<b>不消耗一分钱</b>。用来确认界面能不能打开、文件有没有下全。</p>
+<p>会看到：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>  agent 界面已启动
+  http://127.0.0.1:8765
+  工作目录 /data/data/com.termux/files/home/work
+  模式 MOCK 演示
+  会话库 /data/data/com.termux/files/home/.local/share/webchat/sessions.db（0 个会话）
+  Ctrl+C 停止</code></pre></div>
+<p><b>终端到这里就停住了，不回到 <code class="ic">$</code></b>。这是正常的——它在跑一个网页服务，占着这个终端。</p>
+<p>现在按<b>音量减 + 音量加之外</b>的任意操作都会打断它，注意别误触。切到浏览器：</p>
+<h3>5.2 打开界面</h3>
+<p>在手机浏览器地址栏输入（<b>必须带 <code class="ic">http://</code></b>）：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>http://127.0.0.1:8765</code></pre></div>
+<p>只输 <code class="ic">127.0.0.1:8765</code> 会被浏览器当成搜索词，跳去搜索页。</p>
+<p>建议：把这个地址存成书签，以后一点就开。</p>
+<p><b>看到什么算正常</b>：</p>
+<ul>
+<li>左边一列是会话列表（现在是空的，或者有一条「演示会话」）</li>
+<li>中间是对话区，底部有输入框</li>
+<li>右上角有几个小按钮（主题、导出）</li>
+<li>顶上有个 chip 显示「上下文 0 / 64k」</li>
+</ul>
+<p><b>看不到界面怎么办</b>：</p>
+<div class="tw"><table><thead><tr><th>现象</th><th>原因</th><th>怎么修</th></tr></thead><tbody><tr><td data-label="现象"><code class="ic">ERR_CONNECTION_REFUSED</code></td><td data-label="原因">服务没起来</td><td data-label="怎么修">回 Termux 看有没有报错；终端是否已经退回 <code class="ic">$</code></td></tr><tr><td data-label="现象">页面上写着「缺少 static 目录」</td><td data-label="原因">前端文件没下</td><td data-label="怎么修">回第 3.3 节补下 <code class="ic">static/</code> 三个文件</td></tr><tr><td data-label="现象">一片空白，控制台有红字</td><td data-label="原因">用旧版缓存</td><td data-label="怎么修">关掉标签页重开；或浏览器设置里清缓存</td></tr><tr><td data-label="现象">转圈很久打不开</td><td data-label="原因">端口被别的程序占了</td><td data-label="怎么修">停掉旧进程，或 <code class="ic">python3 webchat.py --mock --port 8800</code></td></tr></tbody></table></div>
+<p>看完界面，回 Termux 按 <b>音量减 + C</b>（等于 Ctrl+C）停掉。</p>
+<h3>5.3 正式启动</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>cd ~/work
+python3 webchat.py</code></pre></div>
+<p>这次没有 <code class="ic">--mock</code>，会真的连 DeepSeek。启动信息里会多一行「配置 .../env」，表示 key 读取成功：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>  agent 界面已启动
+  http://127.0.0.1:8765
+  工作目录 /data/data/com.termux/files/home/work
+  配置 /data/data/com.termux/files/home/.config/webchat/env
+  会话库 .../webchat/sessions.db（1 个会话）
+  Ctrl+C 停止</code></pre></div>
+<p>如果它打印「缺少 DEEPSEEK_KEY」然后退出，说明第 4.4 节没写对，回去检查 <code class="ic">cat ~/.config/webchat/env</code>。</p>
+<p>浏览器还是同一个地址：<code class="ic">http://127.0.0.1:8765</code>。</p>
+<h3>5.4 界面导览</h3>
+<p>第一次看到这个界面会有点懵，按这个顺序看一遍：</p>
+<div class="tw"><table><thead><tr><th>位置</th><th>是什么</th><th>怎么用</th></tr></thead><tbody><tr><td data-label="位置"><b>左上「新对话」</b></td><td data-label="是什么">开一个新会话</td><td data-label="怎么用">一个话题一个会话，别都挤在一个里</td></tr><tr><td data-label="位置"><b>左侧列表</b></td><td data-label="是什么">历史会话，按今天/昨天/更早分组</td><td data-label="怎么用">点一下就切过去，上下文跟着切</td></tr><tr><td data-label="位置"><b>左侧搜索框</b></td><td data-label="是什么">搜标题和正文</td><td data-label="怎么用">找上周问过的东西</td></tr><tr><td data-label="位置"><b>中间空白区</b></td><td data-label="是什么">对话区</td><td data-label="怎么用">这里会滚出你的话和它的回复</td></tr><tr><td data-label="位置"><b>底部输入框</b></td><td data-label="是什么">打字的地方</td><td data-label="怎么用">回车发送，Shift+回车换行</td></tr><tr><td data-label="位置"><b>回复下方小字</b></td><td data-label="是什么"><code class="ic">4 步 · 18.6s · 512 tokens</code></td><td data-label="怎么用">这条回复执行了几步、花了多久、多少 token</td></tr><tr><td data-label="位置"><b>右侧面板</b></td><td data-label="是什么">上下文占用、工具时间线</td><td data-label="怎么用">看它到底做了什么</td></tr><tr><td data-label="位置"><b>顶部 chip</b></td><td data-label="是什么"><code class="ic">上下文 1.2k / 64k</code></td><td data-label="怎么用">快满了会变黄，说明该开新会话了</td></tr><tr><td data-label="位置"><b>顶部 ■</b></td><td data-label="是什么">停止按钮</td><td data-label="怎么用">它跑偏了，点这个刹车，已生成的内容保留</td></tr></tbody></table></div>
+<p>手机上屏幕窄，左侧列表收成抽屉（点左上角 ☰），右侧面板收成底部弹层（点顶部图表图标）。</p>
+<h3>5.5 第一句话说什么</h3>
+<p>不要问「你好」，那浪费一次调用。</p>
+<p>直接用中文说你想做什么，越具体越好。三个可以直接抄的例子：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>看看工作目录里有哪些文件，按类型分个类</code></pre></div>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>我在 ~/work 放了个 apk，帮我分析它申请了哪些危险权限</code></pre></div>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>查看当前手机屏幕上有哪些可点的文字</code></pre></div>
+<p>第三条需要第 6 章配好 ADB 才能用，前两条现在就能跑。</p>
+<p><b>它干活的节奏</b>：先说一句「我先看看」，然后弹出一张工具卡（写着执行的命令和输出），再根据输出继续，最后给结论。</p>
+<p>工具卡是核心。<b>它说「我做完了」不算数，卡片上的输出才算</b>。点开卡片能看到完整的命令和返回内容。</p>
+<h3>5.6 关掉再打开，对话还在</h3>
+<p>这是这一版区别最大的地方。</p>
+<p>按 Ctrl+C 停掉服务，或者直接杀掉 App，甚至重启手机——下次再 <code class="ic">python3 webchat.py</code>，左侧列表里的对话全都在，点进去上下文完整，可以接着聊。</p>
+<p>因为它们存在一个 SQLite 文件里：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>~/.local/share/webchat/sessions.db</code></pre></div>
+<div class="tw"><table><thead><tr><th>你想做</th><th>怎么做</th></tr></thead><tbody><tr><td data-label="你想做">备份</td><td data-label="怎么做"><code class="ic">cp ~/.local/share/webchat/sessions.db ~/sessions-备份.db</code></td></tr><tr><td data-label="你想做">换手机</td><td data-label="怎么做">把这一个文件拷过去，放到同样的路径</td></tr><tr><td data-label="你想做">清空全部历史</td><td data-label="怎么做">删掉这个文件，下次启动自动重建</td></tr><tr><td data-label="你想做">不想要历史</td><td data-label="怎么做">启动时加 <code class="ic">--no-db</code>，纯内存，关掉就没了</td></tr></tbody></table></div>
+<h3>5.7 检查点</h3>
+<p>到这一步你应该能：</p>
+<ul>
+<li>打开 <code class="ic">http://127.0.0.1:8765</code> 看到界面</li>
+<li>输入一句话，看到它调用工具并回复</li>
+<li>关掉终端重新启动，之前的对话还在列表里</li>
+<li>回复下方有「N 步 · N 秒 · N tokens」</li>
+</ul>
+<p>四条都行，说明核心功能已经完全跑通。<b>到这里已经可以日常用了</b>，下面两章是加分项。</p>
+<p>不想让它碰屏幕、不想读图，可以直接跳到第 9 章。</p>
+<hr>
+<h2 id="sec7">第 6 章 让它能操作你的手机屏幕</h2>
+<p>这一章是全套里最容易卡住的地方。慢一点，一步一验。</p>
+<h3>6.1 原理：它凭什么能点你的屏幕</h3>
+<p>安卓系统里有个官方调试通道叫 <b>ADB</b>（Android Debug Bridge）。本来是给开发者用电脑连手机调试的，因为它能做的事和你的手指一样：点击、滑动、输入文字、截屏、读界面结构。</p>
+<p>正常情况下 ADB 要通过 USB 线连电脑。安卓 11 之后加了<b>无线调试</b>，同一台手机上的两个 App 也能通过它通信——这就是 Termux 里的 <code class="ic">adb</code> 能操作本机屏幕的原因。</p>
+<p>所以整个链路是：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>webchat.py  →  adui.py  →  adb  →  安卓系统  →  你的屏幕</code></pre></div>
+<h3>6.2 打开开发者选项</h3>
+<p>这个菜单默认是隐藏的，要用「连点版本号」的方式解锁。</p>
+<div class="tw"><table><thead><tr><th>品牌</th><th>路径</th></tr></thead><tbody><tr><td data-label="品牌">小米 / Redmi</td><td data-label="路径">设置 → 我的设备 → 全部参数与信息 → 连续点「MIUI 版本」7 次</td></tr><tr><td data-label="品牌">华为 / 荣耀</td><td data-label="路径">设置 → 关于手机 → 连续点「版本号」7 次</td></tr><tr><td data-label="品牌">OPPO / 一加 / realme</td><td data-label="路径">设置 → 关于本机 → 版本信息 → 连续点「版本号」7 次</td></tr><tr><td data-label="品牌">vivo / iQOO</td><td data-label="路径">设置 → 系统管理 → 关于手机 → 连续点「软件版本号」7 次</td></tr><tr><td data-label="品牌">三星</td><td data-label="路径">设置 → 关于手机 → 软件信息 → 连续点「编译编号」7 次</td></tr><tr><td data-label="品牌">原生 Android</td><td data-label="路径">设置 → 关于手机 → 连续点「版本号」7 次</td></tr></tbody></table></div>
+<p>点够次数会提示「你已处于开发者模式」。</p>
+<p>然后回到设置主页面找「开发者选项」：</p>
+<ul>
+<li>小米：设置 → 更多设置 → 开发者选项</li>
+<li>其他品牌一般在 设置 → 系统 / 关于手机 附近</li>
+</ul>
+<h3>6.3 打开无线调试</h3>
+<p>在开发者选项里找到 <b>无线调试</b>（Wireless debugging），打开它。</p>
+<p>打开后会弹一个确认框「要允许通过无线方式调试吗」，点<b>允许</b>。</p>
+<p>进去之后你会看到这个页面，<b>记住这一行</b>：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>IP 地址和端口
+192.168.1.102:39549</code></pre></div>
+<p>这个端口（<code class="ic">39549</code>）是<b>连接用的端口</b>，不是配对端口，两者不一样。</p>
+<div class="warn">这个页面上的端口每次重启手机、每次关掉无线调试都会变。所以不要抄下来存着，每次现看。</div>
+<h3>6.4 配对（只需一次）</h3>
+<p>点页面里的 <b>「使用配对码配对设备」</b>，会弹出一个框：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>使用配对码配对设备
+
+Wi-Fi 配对码
+570100
+
+Wi-Fi 配对
+IP 地址和端口
+192.168.1.102:42361</code></pre></div>
+<p>注意这里也有一行 <code class="ic">IP:端口</code>，<b>这个端口（42361）和主页面的（39549）不是同一个</b>。</p>
+<p><b>90% 的失败都是因为拿错了端口。</b> 记法：</p>
+<div class="tw"><table><thead><tr><th>你看到的</th><th>用途</th><th>用在哪</th></tr></thead><tbody><tr><td data-label="你看到的">主页面上的 <code class="ic">IP:端口</code></td><td data-label="用途"><b>连接</b></td><td data-label="用在哪"><code class="ic">adb connect</code></td></tr><tr><td data-label="你看到的">弹窗里的 <code class="ic">IP:端口</code></td><td data-label="用途"><b>配对</b></td><td data-label="用在哪"><code class="ic">adb pair</code></td></tr></tbody></table></div>
+<h4>关键：这个弹窗只活 2 分钟</h4>
+<p>锁屏、切到别的应用、把弹窗关掉，它立刻失效。所以<b>不要抄在纸上再慢慢打</b>，用分屏：</p>
+<ol>
+<li>打开最近任务（多任务键或上滑悬停）</li>
+<li>长按 Termux 图标 → 选「分屏」或「分屏显示」</li>
+<li>上半屏选「设置」，让设置页面和 Termux 同时可见</li>
+<li>在设置里点「使用配对码配对设备」拿到弹窗</li>
+<li>在下面一半的 Termux 里直接敲命令</li>
+</ol>
+<h4>敲这条</h4>
+<p>把 <code class="ic">42361</code> 换成你弹窗里的端口，<code class="ic">570100</code> 换成你的 6 位码：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py pair 127.0.0.1:42361 570100</code></pre></div>
+<p><b>这条在干什么</b>：让本机的 adb 用这个一次性端口和系统的无线调试服务握手，交换密钥。成功后密钥存在手机里，以后不用再配对。</p>
+<p>成功会看到：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>Successfully paired to 127.0.0.1:42361 [guid=adb-xxxxx]
+配对完成（这东西只做一次，重启也不会丢）。
+配对后调试端口会换一个，正在自动找…</code></pre></div>
+<p>然后它会自动开始扫端口（下一节的内容），等它扫完就行。</p>
+<p><b>失败的信息长这样，对症下药</b>：</p>
+<div class="tw"><table><thead><tr><th>输出</th><th>原因</th><th>怎么修</th></tr></thead><tbody><tr><td data-label="输出"><code class="ic">protocol fault (couldn&#x27;t read status message)</code></td><td data-label="原因">端口用错了，拿了连接端口去配对</td><td data-label="怎么修">回弹窗看，配对要用弹窗里那个端口</td></tr><tr><td data-label="输出"><code class="ic">failed to authenticate to</code></td><td data-label="原因">6 位码打错了</td><td data-label="怎么修">重新开弹窗，慢慢核对</td></tr><tr><td data-label="输出"><code class="ic">Connection refused</code></td><td data-label="原因">弹窗已过期</td><td data-label="怎么修">重新点「使用配对码配对设备」拿新的一组</td></tr><tr><td data-label="输出"><code class="ic">adb: command not found</code></td><td data-label="原因">没装 android-tools</td><td data-label="怎么修"><code class="ic">pkg install -y android-tools</code></td></tr></tbody></table></div>
+<h3>6.5 找到连接端口并连上（推荐用 scan）</h3>
+<p>配对只解决「你是谁」，还没建立连接。连接需要主页面那个端口。</p>
+<p><b>别用肉眼抄</b>，让它自己扫：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py scan</code></pre></div>
+<p><b>这条在干什么</b>：Termux 和 adbd 跑在同一台手机上，所以它扫 <code class="ic">127.0.0.1</code> 的 30000 到 65535 端口，找出哪个在说 ADB 协议，找到就顺手 <code class="ic">connect</code>。</p>
+<p>正常会看到：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>扫描 127.0.0.1 的 30000-65535 端口（共 35536 个，约 5-20 秒）…
+发现开放端口：39549
+connect 127.0.0.1:39549 → connected
+已连接 127.0.0.1:39549</code></pre></div>
+<p>看到 <code class="ic">connected</code> 或 <code class="ic">已连接</code> 就成了。</p>
+<div class="note">为什么不用 <code class="ic">adb mdns services</code>？Termux 里的 android-tools 在编译时把 mDNS 支持关掉了，这条命令必然报 <code class="ic">not supported</code>。所以作者改成了端口扫描，这是 Termux 环境下唯一可靠的办法。</div>
+<p><b>扫不到怎么办</b>：</p>
+<div class="tw"><table><thead><tr><th>现象</th><th>原因</th><th>怎么修</th></tr></thead><tbody><tr><td data-label="现象">一个端口都没发现</td><td data-label="原因">无线调试被关了</td><td data-label="怎么修">回设置确认「无线调试」是打开状态</td></tr><tr><td data-label="现象">发现端口但连接失败</td><td data-label="原因">配对没完成</td><td data-label="怎么修">重做 6.4 节</td></tr><tr><td data-label="现象">提示 <code class="ic">device offline</code></td><td data-label="原因">连接过期</td><td data-label="怎么修"><code class="ic">python3 adui.py doctor</code></td></tr></tbody></table></div>
+<h3>6.6 验证：能不能看见屏幕</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py info</code></pre></div>
+<p>应该输出设备型号、安卓版本、分辨率之类。看到型号就说明通了。</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py look</code></pre></div>
+<p><b>这条在干什么</b>：读当前界面的元素树，列出所有可点的东西，带序号和坐标。</p>
+<p>输出长这样：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>[ 1] 微信                          ( 540,2180)  clickable,text
+[ 2] 通讯录                        ( 180,2180)  clickable,text
+[ 3] 发现                          ( 540,2180)  clickable,text
+[ 4] 我                            ( 900,2180)  clickable,text
+提示：tap N 直接点第 N 个；tap-text 文字 也行</code></pre></div>
+<p>格式是 <code class="ic">[序号] 文字 (x,y) 标记</code>。</p>
+<p><b>然后就能操作了</b>：</p>
+<div class="tw"><table><thead><tr><th>命令</th><th>效果</th></tr></thead><tbody><tr><td data-label="命令"><code class="ic">python3 adui.py tap 1</code></td><td data-label="效果">点第 1 个元素（按序号最省事）</td></tr><tr><td data-label="命令"><code class="ic">python3 adui.py tap 540 2180</code></td><td data-label="效果">点坐标（知道位置时用）</td></tr><tr><td data-label="命令"><code class="ic">python3 adui.py tap-text 微信</code></td><td data-label="效果">按文字找，找到就点</td></tr><tr><td data-label="命令"><code class="ic">python3 adui.py key back</code></td><td data-label="效果">返回键。还有 <code class="ic">home</code>、<code class="ic">enter</code>、<code class="ic">delete</code></td></tr><tr><td data-label="命令"><code class="ic">python3 adui.py swipe 540 1600 540 600</code></td><td data-label="效果">从 (540,1600) 滑到 (540,600)，上滑一次</td></tr><tr><td data-label="命令"><code class="ic">python3 adui.py scroll down 3</code></td><td data-label="效果">向下滚 3 屏</td></tr><tr><td data-label="命令"><code class="ic">python3 adui.py shot ~/work/screen.png</code></td><td data-label="效果">截屏存文件</td></tr><tr><td data-label="命令"><code class="ic">python3 adui.py wait 设置 15</code></td><td data-label="效果">等「设置」两个字出现，最多等 15 秒</td></tr></tbody></table></div>
+<p>再 <code class="ic">look</code> 一次，看界面有没有变。变了就说明真的点到了。</p>
+<h3>6.7 往输入框里打中文</h3>
+<p><code class="ic">adb input text</code> 天生不支持中文，打出来是乱码或者直接吞掉。</p>
+<p>解决方式是用一个专门的输入法 App。作者写了个安装命令：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py ime-install</code></pre></div>
+<p><b>这条在干什么</b>：检查手机里有没有装那个输入法，没有就提示你怎么装。装完后：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py text &quot;我在路上了，十分钟到&quot;</code></pre></div>
+<p>它会临时切到那个输入法、打完字、再切回你原来的输入法。</p>
+<p>如果提示「未配好」，按顺序试：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py ime-enable
+python3 adui.py ime</code></pre></div>
+<p><code class="ic">ime</code> 不带参数是查看当前输入法状态，带 App 名是手动切。</p>
+<div class="note">不想折腾输入法也行：中文内容让 AI 用英文拼音代替，或者直接用 <code class="ic">ocr</code> 找到输入框坐标后用 <code class="ic">tap</code> + 系统键盘手动打。不过装了之后确实省事，建议装。</div>
+<h3>6.8 断了怎么办（下次开机必用）</h3>
+<p>无线调试的连接<b>重启手机就断</b>，不是坏了，是安卓的正常行为。</p>
+<p>一条命令修：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py doctor</code></pre></div>
+<p><b>这条在干什么</b>：按顺序做四件事，遇到能解决的就停：</p>
+<ol>
+<li>查 <code class="ic">adb version</code>，确认工具有没有</li>
+<li>查 <code class="ic">adb devices</code>，看是 <code class="ic">offline</code> 还是 <code class="ic">unauthorized</code></li>
+<li><code class="ic">kill-server</code> + <code class="ic">start-server</code> 重置连接</li>
+<li>扫 30000-65535 端口，找到就重新连上</li>
+</ol>
+<p>正常输出：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>[1/4] adb 版本 1.0.41
+[2/4] 当前设备：
+      127.0.0.1:39549   offline
+[3/4] 重启 adb 服务
+[4/4] 扫描端口…
+      connect 127.0.0.1:41233 → connected
+完成</code></pre></div>
+<p><b>已经连着的会直接跳过</b>，不会重复扫。</p>
+<p>几种情况看起来像坏了，其实不是：</p>
+<div class="tw"><table><thead><tr><th>现象</th><th>怎么办</th></tr></thead><tbody><tr><td data-label="现象">重启手机后 <code class="ic">look</code> 报连接失败</td><td data-label="怎么办">正常，跑一次 <code class="ic">doctor</code></td></tr><tr><td data-label="现象">换 WiFi / 开关飞行模式后断</td><td data-label="怎么办">跑 <code class="ic">doctor</code></td></tr><tr><td data-label="现象"><code class="ic">unauthorized</code></td><td data-label="怎么办">手机上会弹「允许 USB 调试吗」，点允许并勾「一律允许」</td></tr><tr><td data-label="现象">跑完 <code class="ic">doctor</code> 还是连不上</td><td data-label="怎么办">关掉无线调试再打开，重新 <code class="ic">scan</code></td></tr><tr><td data-label="现象">配对信息丢了（提示需要重新配对）</td><td data-label="怎么办">重做 6.4 节，2 分钟的事</td></tr></tbody></table></div>
+<h3>6.9 检查点</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py doctor</code></pre></div>
+<p>最后一行是「完成」或显示已连接，且紧接着：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py look</code></pre></div>
+<p>能列出元素，就说明控屏链路完全通了。</p>
+<p>现在回网页界面，说一句：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>看看当前屏幕上有哪些可点的文字</code></pre></div>
+<p>它会自己调 <code class="ic">adui.py look</code>，把结果整理成中文告诉你。</p>
+<hr>
+<h2 id="sec8">第 7 章 让它能看图片和 PDF</h2>
+<h3>7.1 什么时候需要</h3>
+<p>程序的 <code class="ic">look</code> 命令读的是安卓的界面元素树。遇到下面这些，元素树是空的：</p>
+<ul>
+<li>游戏画面</li>
+<li>用 Flutter 或 Unity 写的 App（树上只有一整块画布）</li>
+<li>一张图片里印着字（截图、照片、扫描件）</li>
+<li>别人发来的 PDF</li>
+</ul>
+<p>这时候只能靠<b>看图认字</b>，也就是 OCR（Optical Character Recognition，光学字符识别）。</p>
+<h3>7.2 确认依赖都装了</h3>
+<p>第 2.4 节 B 组装过的话跳过这步。没装就补：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>pkg install -y tesseract poppler python-pillow</code></pre></div>
+<p>三个包各自的作用：</p>
+<div class="tw"><table><thead><tr><th>包</th><th>提供的命令</th><th>干什么</th></tr></thead><tbody><tr><td data-label="包"><code class="ic">tesseract</code></td><td data-label="提供的命令"><code class="ic">tesseract</code></td><td data-label="干什么">识别引擎，图片进、文字出</td></tr><tr><td data-label="包"><code class="ic">poppler</code></td><td data-label="提供的命令"><code class="ic">pdftoppm</code></td><td data-label="干什么">把 PDF 每页转成 PNG，才能喂给引擎</td></tr><tr><td data-label="包"><code class="ic">python-pillow</code></td><td data-label="提供的命令">（Python 库）</td><td data-label="干什么"><code class="ic">ocr.py</code> 用它做灰度、缩放、裁剪</td></tr></tbody></table></div>
+<p>验证：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>tesseract --version</code></pre></div>
+<p>看到 <code class="ic">tesseract 5.x.x</code> 就行。</p>
+<h3>7.3 装中文语言包</h3>
+<p>引擎本身只会认英文，中文要单独下模型文件。</p>
+<p>先看现在有哪些语言：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>tesseract --list-langs</code></pre></div>
+<p>如果输出里只有 <code class="ic">eng</code> 和 <code class="ic">osd</code>，需要补中文：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>mkdir -p ~/.tessdata</code></pre></div>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>curl -fL -o ~/.tessdata/chi_sim.traineddata &quot;https://ghfast.top/https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/chi_sim.traineddata&quot;</code></pre></div>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>curl -fL -o ~/.tessdata/eng.traineddata &quot;https://ghfast.top/https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/eng.traineddata&quot;</code></pre></div>
+<p><b>这两条在干什么</b>：把简体中文和英文的识别模型下载到 <code class="ic">~/.tessdata</code>，<code class="ic">ocr.py</code> 启动时会优先读这个目录。</p>
+<p>补完再验一次：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>tesseract --list-langs</code></pre></div>
+<p>现在应该能看到 <code class="ic">chi_sim</code>。</p>
+<div class="note"><code class="ic">tessdata_fast</code> 是速度优先的版本，手机上用这个。如果发现某些字总认错，可以换 <code class="ic">tessdata_best</code>（准确率高但慢 3-5 倍），把地址里的 <code class="ic">tessdata_fast</code> 改成 <code class="ic">tessdata_best</code> 重下一次即可。</div>
+<h3>7.4 自检</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 ocr.py doctor</code></pre></div>
+<p><b>这条在干什么</b>：查引擎在不在、语言包齐不齐、Pillow 能不能用、临时目录可写。每项打一个勾或叉。</p>
+<p>全绿就能用了。有一项是叉，它会直接告诉你缺什么、装哪个包。</p>
+<h3>7.5 三种用法</h3>
+<p><b>第一种：只要文字</b></p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 ocr.py ~/work/screenshot.png</code></pre></div>
+<p>输出一行一句，像这样：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>微信
+通讯录
+发现
+我</code></pre></div>
+<p><b>第二种：要坐标（能直接点）</b></p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 ocr.py ~/work/screenshot.png --boxes</code></pre></div>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>  0  120  480  60  24  92     微信
+  1  120  980  60  24  88     通讯录</code></pre></div>
+<p>格式是 <code class="ic">x y 宽 高 置信度 文字</code>。坐标可以直接喂给 <code class="ic">tap</code>：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py tap 150 492</code></pre></div>
+<p><b>第三种：给程序用</b></p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 ocr.py ~/work/screenshot.png --json</code></pre></div>
+<p>输出一个 JSON 数组，每项含 <code class="ic">text</code>、<code class="ic">x</code>、<code class="ic">y</code>、<code class="ic">conf</code>。</p>
+<h3>7.6 认不准怎么调</h3>
+<p>OCR 不是万能的，尤其手机上字小、背景花。按这个顺序试：</p>
+<div class="tw"><table><thead><tr><th>问题</th><th>加这个参数</th><th>说明</th></tr></thead><tbody><tr><td data-label="问题">整张图字太小</td><td data-label="加这个参数"><code class="ic">--scale 2</code></td><td data-label="说明">先放大两倍再认。默认按宽度自动判断</td></tr><tr><td data-label="问题">只想认中间一块</td><td data-label="加这个参数"><code class="ic">--crop 120,480,900,720</code></td><td data-label="说明">四个数是 <code class="ic">左,上,右,下</code>，单位像素</td></tr><tr><td data-label="问题">一行字被拆成好几段</td><td data-label="加这个参数"><code class="ic">--psm 6</code></td><td data-label="说明">告诉引擎「当成一整块文字」，不要按版面切</td></tr><tr><td data-label="问题">深色背景白字</td><td data-label="加这个参数"><code class="ic">--invert on</code></td><td data-label="说明">反色</td></tr><tr><td data-label="问题">彩色底（比如微信绿）</td><td data-label="加这个参数">通常自动处理</td><td data-label="说明">程序会检测饱和度改用亮度通道</td></tr><tr><td data-label="问题">结果里有大量乱码</td><td data-label="加这个参数"><code class="ic">--minconf 50</code></td><td data-label="说明">把置信度低于 50 的全丢掉</td></tr></tbody></table></div>
+<p>例子，组合使用：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 ocr.py ~/work/shot.png --crop 80,400,1000,900 --scale 2 --psm 6 --boxes</code></pre></div>
+<div class="note">每个参数都能单独试。<b>先试 <code class="ic">--crop</code>，收益最大</b>：只认你需要的那一块，速度和准确率都会明显提升。</div>
+<h3>7.7 截屏直接识别（控屏专用）</h3>
+<p><code class="ic">adui.py</code> 里集成了一条龙：截屏 + 识别 + 输出坐标，不用先存文件再喂给 <code class="ic">ocr.py</code>。</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py ocr</code></pre></div>
+<p>输出：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>[ 1] 微信                    ( 540,2180)  92
+[ 2] 通讯录                  ( 180,2180)  88</code></pre></div>
+<p>序号可以直接 <code class="ic">tap</code>：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py tap 1</code></pre></div>
+<p><b>这就是 <code class="ic">look</code> 看不见界面时的备用方案</b>：<code class="ic">look</code> 拿元素树，<code class="ic">ocr</code> 认屏幕上的字，两条路都能定位。</p>
+<p>参数和 <code class="ic">ocr.py</code> 基本一致：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py ocr --crop 0,1800,1080,2400</code></pre></div>
+<p>只认底部导航栏那一块。</p>
+<h3>7.8 检查点</h3>
+<p>找一张有字的截图（微信聊天截图最好），执行：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 ocr.py 你的截图.png --boxes</code></pre></div>
+<p>能看到中文文字和坐标，说明这一章通了。</p>
+<p>再试 PDF（有的话）：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 ocr.py 某个文件.pdf --dpi 150</code></pre></div>
+<p>它会逐页转图再识别。页数多会很慢，可以只处理前两页：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 ocr.py 某个文件.pdf --first 1 --last 2</code></pre></div>
+<hr>
+<h2 id="sec9">第 8 章 在电脑或虚拟机上再装一份（可选）</h2>
+<p>手机上已经能用了的话，这章可以跳过。想在更大的屏幕上用、或者要操作 Linux 桌面，才需要看。</p>
+<h3>8.1 为什么要在第二台机器上装</h3>
+<div class="tw"><table><thead><tr><th>理由</th><th>说明</th></tr></thead><tbody><tr><td data-label="理由">屏幕大</td><td data-label="说明">手机上三栏布局挤，电脑上看得清工具输出和表格</td></tr><tr><td data-label="理由">跑得久</td><td data-label="说明">手机切后台容易被系统杀，虚拟机不容易</td></tr><tr><td data-label="理由">能控 Linux 桌面</td><td data-label="说明"><code class="ic">ui.py</code> 靠 X11 截图和 xdotool，只有 Linux 桌面环境能用</td></tr><tr><td data-label="理由">不占用手机</td><td data-label="说明">一边用手机干别的，一边让它跑在虚拟机里</td></tr></tbody></table></div>
+<p>会话库是<b>各存各的</b>，两台机器不共享历史。想让两边看到同一份记录，手动拷 <code class="ic">sessions.db</code>。</p>
+<h3>8.2 装 Python（Ubuntu / Debian）</h3>
+<p>先确认系统版本，别在很老的发行版上折腾：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>lsb_release -a</code></pre></div>
+<p>Ubuntu 20.04 以上、Debian 11 以上都行。</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>sudo apt update
+sudo apt install -y python3 python3-pip</code></pre></div>
+<p><b>这两条在干什么</b>：<code class="ic">apt</code> 是 Debian 系的包管理器（相当于手机上的 <code class="ic">pkg</code>）。第一条刷新软件清单，第二条装 Python 3 和 pip。</p>
+<p>验证：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 --version
+pip3 --version</code></pre></div>
+<p>看到 <code class="ic">Python 3.10.x</code> 或更高就对了。注意 Linux 上 pip 通常叫 <code class="ic">pip3</code>，不是 <code class="ic">pip</code>。</p>
+<div class="warn">如果 <code class="ic">pip3 install xxx</code> 报 <code class="ic">error: externally-managed-environment</code>，这是新版 Debian/Ubuntu 的保护机制，不是坏了。两个选择：一是改用 <code class="ic">apt install python3-xxx</code>（推荐，比如 <code class="ic">python3-pil</code>）；二是给项目建虚拟环境。<b>不要加 <code class="ic">--break-system-packages</code> 硬装</b>，会把系统 Python 搞乱。</div>
+<h3>8.3 装额外依赖</h3>
+<div class="tw"><table><thead><tr><th>用途</th><th>命令</th></tr></thead><tbody><tr><td data-label="用途">控屏（不需要，Linux 上没有安卓）</td><td data-label="命令">—</td></tr><tr><td data-label="用途">OCR</td><td data-label="命令"><code class="ic">sudo apt install -y tesseract-ocr tesseract-ocr-chi-sim poppler-utils python3-pil</code></td></tr><tr><td data-label="用途">X11 桌面控屏</td><td data-label="命令"><code class="ic">sudo apt install -y xdotool imagemagick</code></td></tr><tr><td data-label="用途">反汇编</td><td data-label="命令"><code class="ic">sudo apt install -y radare2</code></td></tr></tbody></table></div>
+<p>Linux 上的 tesseract 一般自带中文包（<code class="ic">tesseract-ocr-chi-sim</code>），不用手动下模型。装完验证：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>tesseract --list-langs</code></pre></div>
+<p>有 <code class="ic">chi_sim</code> 就行。</p>
+<h3>8.4 把代码拉下来</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>sudo apt install -y git curl
+mkdir -p ~/work &amp;&amp; cd ~/work
+curl -fL -o update.sh.part &quot;https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/update.sh&quot; &amp;&amp; mv update.sh.part update.sh
+sh update.sh</code></pre></div>
+<p>流程和手机上一模一样。拉完 <code class="ic">ls</code> 确认有 <code class="ic">webchat.py</code> 和 <code class="ic">static/</code>。</p>
+<h3>8.5 配置和启动</h3>
+<p>key 的配置方式和手机相同，路径也一样：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>mkdir -p ~/.config/webchat
+echo &#x27;DEEPSEEK_KEY=sk-你的key&#x27; &gt; ~/.config/webchat/env
+chmod 600 ~/.config/webchat/env</code></pre></div>
+<p>启动：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>cd ~/work
+python3 webchat.py</code></pre></div>
+<p>浏览器打开 <code class="ic">http://127.0.0.1:8765</code>。</p>
+<h3>8.6 想让别的设备访问</h3>
+<p>默认只监听 <code class="ic">127.0.0.1</code>，也就是只有本机能连。要让手机、平板、宿主机访问，得改成 <code class="ic">0.0.0.0</code>：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 webchat.py --host 0.0.0.0</code></pre></div>
+<p>或者写进配置文件，省得每次敲：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>echo &#x27;HOST=0.0.0.0&#x27; &gt;&gt; ~/.config/webchat/env</code></pre></div>
+<p>改完之后用这台机器的<b>局域网 IP</b> 访问，不是 <code class="ic">127.0.0.1</code>：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>ip addr | grep &quot;inet 192&quot;</code></pre></div>
+<p>假设输出 <code class="ic">192.168.1.50</code>，那就在浏览器打 <code class="ic">http://192.168.1.50:8765</code>。</p>
+<p><b>虚拟机里还要多做一步</b>：宿主机的浏览器访问虚拟机的端口，需要端口映射（NAT 转发）或把虚拟机网络设成桥接模式。</p>
+<div class="tw"><table><thead><tr><th>方式</th><th>怎么做</th></tr></thead><tbody><tr><td data-label="方式">桥接</td><td data-label="怎么做">虚拟机设置 → 网络 → 桥接网卡。虚拟机会拿到和宿主机同网段的 IP，直接用那个 IP 访问</td></tr><tr><td data-label="方式">NAT + 端口转发</td><td data-label="怎么做">虚拟机设置 → 网络 → 端口转发 → 添加：主机端口 <code class="ic">8765</code>，子系统端口 <code class="ic">8765</code></td></tr></tbody></table></div>
+<div class="warn"><code class="ic">--host 0.0.0.0</code> 等于把这台机器上的<b>命令执行权</b>开给整个局域网，而这个界面<b>没有密码</b>。同一 WiFi 下的任何人打开浏览器就能让它执行任意命令、看你的会话记录。只在完全信任的网络里这么用，用完改回默认。</div>
+<h3>8.7 控制 Linux 桌面（ui.py）</h3>
+<p><code class="ic">ui.py</code> 是给 X11 桌面用的另一个工具，能力比 <code class="ic">adui.py</code> 弱（因为 Linux 没有元素树），主要靠截图 + OCR 定位。</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>sudo apt install -y xdotool imagemagick
+python3 ui.py look</code></pre></div>
+<p>按它输出的提示操作：<code class="ic">ui.py click 文字</code>、<code class="ic">ui.py type 内容</code>、<code class="ic">ui.py key ctrl+t</code>。</p>
+<p><code class="ic">webchat.py</code> 会自动检测 <code class="ic">ui.py</code> 在不在，在的话就能通过对话让它操作桌面。</p>
+<h3>8.8 检查点</h3>
+<div class="tw"><table><thead><tr><th>检查</th><th>命令</th><th>期望</th></tr></thead><tbody><tr><td data-label="检查">Python 版本</td><td data-label="命令"><code class="ic">python3 --version</code></td><td data-label="期望">3.8 以上</td></tr><tr><td data-label="检查">文件齐全</td><td data-label="命令"><code class="ic">ls ~/work/static</code></td><td data-label="期望">三个文件</td></tr><tr><td data-label="检查">key 生效</td><td data-label="命令">启动横幅有「配置 .../env」</td><td data-label="期望">—</td></tr><tr><td data-label="检查">界面能开</td><td data-label="命令">浏览器 <code class="ic">http://127.0.0.1:8765</code></td><td data-label="期望">正常显示</td></tr><tr><td data-label="检查">局域网能连</td><td data-label="命令">另一台设备访问 <code class="ic">http://IP:8765</code></td><td data-label="期望">正常显示</td></tr></tbody></table></div>
+<hr>
+<h2 id="sec10">第 9 章 日常怎么用</h2>
+<h3>9.1 每天启动，三步</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>cd ~/work
+termux-wake-lock
+python3 webchat.py</code></pre></div>
+<p>嫌麻烦就写成一个脚本，以后一句 <code class="ic">sh ~/start.sh</code>：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>cat &gt; ~/start.sh &lt;&lt;&#x27;EOF&#x27;
+#!/data/data/com.termux/files/usr/bin/sh
+termux-wake-lock
+cd ~/work
+python3 webchat.py
+EOF
+chmod +x ~/start.sh</code></pre></div>
+<p><b>这几条在干什么</b>：<code class="ic">cat &gt; 文件 &lt;&lt;&#x27;EOF&#x27; ... EOF</code> 是把中间那几行原样写进文件（这是终端里写文件的标准做法，<code class="ic">&#x27;EOF&#x27;</code> 加引号是为了不让 <code class="ic">$</code> 被提前替换）。最后 <code class="ic">chmod +x</code> 给它执行权限。</p>
+<p>以后启动：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>sh ~/start.sh</code></pre></div>
+<p><b>Linux 上把 shebang 改成</b> <code class="ic">#!/bin/sh</code>，其余不变。</p>
+<h3>9.2 让它后台跑（可选）</h3>
+<p>想一边用手机一边让它跑，可以放后台：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>cd ~/work &amp;&amp; nohup python3 webchat.py &gt; ~/webchat.log 2&gt;&amp;1 &amp;</code></pre></div>
+<p><b>这行在干什么</b>：<code class="ic">nohup</code> 让它在终端关掉后继续跑，<code class="ic">&gt;</code> 把输出写进日志，<code class="ic">&amp;</code> 放后台。</p>
+<p>看日志：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>tail -f ~/webchat.log</code></pre></div>
+<p>停止：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>pkill -f webchat.py</code></pre></div>
+<p>Termux 里没有 <code class="ic">pkill</code> 的话先 <code class="ic">pkg install -y procps</code>。</p>
+<div class="note">后台模式有个坑：安卓可能在你不知道的时候杀掉它，而你看不到报错。不确定的时候别放后台，前台跑着，日志一眼就能看见。</div>
+<h3>9.3 更新到新版</h3>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>cd ~/work
+sh update.sh</code></pre></div>
+<p>一句话。它会：</p>
+<ul>
+<li>逐个比对远端和本地，内容一样就跳过（不写盘、不产生 <code class="ic">.bak</code>）</li>
+<li>变了的文件先下到临时目录，校验非空才替换</li>
+<li><code class="ic">.py</code> 和 <code class="ic">.sh</code> 先做语法检查，坏的直接拒绝写入，旧文件原样保留</li>
+<li>第一个镜像不通自动换下一个</li>
+</ul>
+<p>想先看有什么变化、不下载：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>sh update.sh --list</code></pre></div>
+<p>只更新某一个：</p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>sh update.sh webchat.py</code></pre></div>
+<p>更新完记得重启服务，不然跑的还是内存里的旧代码。</p>
+<h3>9.4 备份和迁移</h3>
+<div class="tw"><table><thead><tr><th>想备份什么</th><th>命令</th></tr></thead><tbody><tr><td data-label="想备份什么">全部对话</td><td data-label="命令"><code class="ic">cp ~/.local/share/webchat/sessions.db ~/sessions-$(date +%m%d).db</code></td></tr><tr><td data-label="想备份什么">程序和配置</td><td data-label="命令"><code class="ic">tar czf ~/kit-$(date +%m%d).tgz -C ~ work .config/webchat</code></td></tr><tr><td data-label="想备份什么">只有代码</td><td data-label="命令">重新跑 <code class="ic">sh update.sh</code> 就行，不用备份</td></tr></tbody></table></div>
+<p><b>换手机</b>：</p>
+<ol>
+<li>新手机装好 Termux、Python、拉好代码</li>
+<li>把旧手机的 <code class="ic">sessions.db</code> 拷到新手机同样的路径</li>
+<li>重新写一遍 <code class="ic">~/.config/webchat/env</code>（key 不要用旧文件传，重打一遍更安全）</li>
+</ol>
+<h3>9.5 目录说明</h3>
+<div class="tw"><table><thead><tr><th>路径</th><th>是什么</th><th>能删吗</th></tr></thead><tbody><tr><td data-label="路径"><code class="ic">~/work/</code></td><td data-label="是什么">程序和 <code class="ic">static/</code></td><td data-label="能删吗">删了要重下</td></tr><tr><td data-label="路径"><code class="ic">~/work/static/</code></td><td data-label="是什么">网页三件套</td><td data-label="能删吗"><b>不能删</b>，删了界面打不开</td></tr><tr><td data-label="路径"><code class="ic">~/.config/webchat/env</code></td><td data-label="是什么">key 和配置</td><td data-label="能删吗">删了要重配</td></tr><tr><td data-label="路径"><code class="ic">~/.local/share/webchat/sessions.db</code></td><td data-label="是什么">所有对话记录</td><td data-label="能删吗">删了历史全没，慎删</td></tr><tr><td data-label="路径"><code class="ic">~/.tessdata/</code></td><td data-label="是什么">OCR 语言模型</td><td data-label="能删吗">删了中文认不出</td></tr><tr><td data-label="路径"><code class="ic">~/webchat.log</code></td><td data-label="是什么">后台日志</td><td data-label="能删吗">可删</td></tr><tr><td data-label="路径"><code class="ic">~/work/*.bak</code></td><td data-label="是什么">更新前的旧版本</td><td data-label="能删吗">确认新版没问题后可删</td></tr></tbody></table></div>
+<hr>
+<h2 id="sec11">第 10 章 出问题怎么查</h2>
+<h3>10.1 三步自检</h3>
+<p><b>遇到任何问题，先跑这三步，八成能自己解决。</b></p>
+<p><b>第一步：看它是死是活</b></p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 webchat.py --mock</code></pre></div>
+<p><code class="ic">--mock</code> 不花钱、不依赖 key、不依赖网络。它能起来，说明程序和前端没问题，问题在 key 或网络。</p>
+<p><b>第二步：看依赖</b></p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 webchat.py --no-db</code></pre></div>
+<p><code class="ic">--no-db</code> 跳过数据库。它能起来、加了 <code class="ic">--mock</code> 又起不来，说明数据库文件坏了（可以改名后重试，程序会重建）。</p>
+<p><b>第三步：看控屏链路</b></p>
+<div class="cb"><div class="capbar"><button class="cp" type="button">复制</button></div><pre><code>python3 adui.py doctor</code></pre></div>
+<p>只在你用控屏功能时跑。它会把 adb、设备状态、端口扫描全过一遍。</p>
+<h3>10.2 错误信息对照表</h3>
+<p>按你看到的<b>原文</b>查。左边是报错里的一段字，不是全部。</p>
+<div class="tw"><table><thead><tr><th>你看到的</th><th>原因</th><th>怎么办</th></tr></thead><tbody><tr><td data-label="你看到的"><code class="ic">command not found: python3</code></td><td data-label="原因">没装 Python</td><td data-label="怎么办">第 2 章</td></tr><tr><td data-label="你看到的"><code class="ic">command not found: adb</code></td><td data-label="原因">没装 android-tools</td><td data-label="怎么办"><code class="ic">pkg install -y android-tools</code></td></tr><tr><td data-label="你看到的"><code class="ic">can&#x27;t open file &#x27;webchat.py&#x27;</code></td><td data-label="原因">不在对的目录</td><td data-label="怎么办"><code class="ic">cd ~/work</code> 再跑。用 <code class="ic">pwd</code> 看自己在哪</td></tr><tr><td data-label="你看到的"><code class="ic">缺少 static 目录</code></td><td data-label="原因">前端文件没下</td><td data-label="怎么办">补下 <code class="ic">static/</code> 三个文件</td></tr><tr><td data-label="你看到的"><code class="ic">缺少 DEEPSEEK_KEY</code></td><td data-label="原因">key 没配好</td><td data-label="怎么办">检查 <code class="ic">~/.config/webchat/env</code></td></tr><tr><td data-label="你看到的"><code class="ic">Address already in use</code></td><td data-label="原因">端口被占</td><td data-label="怎么办"><code class="ic">pkill -f webchat.py</code>，或换 <code class="ic">--port 8800</code></td></tr><tr><td data-label="你看到的"><code class="ic">ERR_CONNECTION_REFUSED</code></td><td data-label="原因">服务没起</td><td data-label="怎么办">看终端有没有报错，服务是否还活着</td></tr><tr><td data-label="你看到的">页面一片空白</td><td data-label="原因">浏览器缓存</td><td data-label="怎么办">关标签页重开</td></tr><tr><td data-label="你看到的"><code class="ic">E: Unable to locate package</code></td><td data-label="原因">软件列表过期</td><td data-label="怎么办"><code class="ic">pkg update</code> 后重试</td></tr><tr><td data-label="你看到的"><code class="ic">No space left on device</code></td><td data-label="原因">存储满</td><td data-label="怎么办"><code class="ic">df -h</code> 看哪个分区，清理</td></tr><tr><td data-label="你看到的"><code class="ic">Error: externally-managed-environment</code></td><td data-label="原因">Linux 上的 pip 保护</td><td data-label="怎么办">改用 <code class="ic">apt install python3-xxx</code></td></tr><tr><td data-label="你看到的"><code class="ic">protocol fault (couldn&#x27;t read...)</code></td><td data-label="原因">配对端口用错</td><td data-label="怎么办">用弹窗里的端口，不是主页面的</td></tr><tr><td data-label="你看到的"><code class="ic">device offline</code></td><td data-label="原因">连接过期</td><td data-label="怎么办"><code class="ic">python3 adui.py doctor</code></td></tr><tr><td data-label="你看到的"><code class="ic">unauthorized</code></td><td data-label="原因">没授权调试</td><td data-label="怎么办">手机上点「允许」，勾「一律允许」</td></tr><tr><td data-label="你看到的"><code class="ic">Connection refused</code>（配对时）</td><td data-label="原因">弹窗过期（2 分钟）</td><td data-label="怎么办">重开弹窗，30 秒内敲完</td></tr><tr><td data-label="你看到的"><code class="ic">adb: not supported</code></td><td data-label="原因">用了 <code class="ic">adb mdns</code></td><td data-label="怎么办">改用 <code class="ic">python3 adui.py scan</code></td></tr><tr><td data-label="你看到的"><code class="ic">tesseract: command not found</code></td><td data-label="原因">没装 OCR</td><td data-label="怎么办"><code class="ic">pkg install -y tesseract</code></td></tr><tr><td data-label="你看到的"><code class="ic">Error opening data file ... chi_sim</code></td><td data-label="原因">中文模型缺失</td><td data-label="怎么办">第 7.3 节下载</td></tr><tr><td data-label="你看到的"><code class="ic">image file is invalid</code></td><td data-label="原因">图片路径错或文件坏了</td><td data-label="怎么办">用绝对路径，先 <code class="ic">ls</code> 确认文件在</td></tr><tr><td data-label="你看到的">回复卡住不动</td><td data-label="原因">模型接口超时</td><td data-label="怎么办">点停止，重发；或换网络</td></tr><tr><td data-label="你看到的">一直提示「已达上限」</td><td data-label="原因">单条消息步数用完</td><td data-label="怎么办">说「继续」，或新开一条</td></tr><tr><td data-label="你看到的">中文输入乱码</td><td data-label="原因">没配输入法</td><td data-label="怎么办"><code class="ic">python3 adui.py ime-install</code></td></tr></tbody></table></div>
+<h3>10.3 日志在哪看</h3>
+<div class="tw"><table><thead><tr><th>场景</th><th>怎么看</th></tr></thead><tbody><tr><td data-label="场景">前台运行</td><td data-label="怎么看">报错直接打在终端上，往上翻</td></tr><tr><td data-label="场景">后台运行</td><td data-label="怎么看"><code class="ic">tail -50 ~/webchat.log</code></td></tr><tr><td data-label="场景">网页出问题</td><td data-label="怎么看">浏览器长按页面 → 检查 → 控制台（手机 Chrome 可用 <code class="ic">chrome://inspect</code> 从电脑看）</td></tr><tr><td data-label="场景">adb 细节</td><td data-label="怎么看"><code class="ic">adb devices -l</code>，或 <code class="ic">python3 adui.py info</code></td></tr></tbody></table></div>
+<h3>10.4 什么时候该问人</h3>
+<p>自己排查的顺序建议是：</p>
+<ol>
+<li>把报错<b>原文</b>复制下来（不要凭印象描述）</li>
+<li>在 10.2 的表里搜关键词</li>
+<li>搜不到的，把这三样发出来问：<b>你敲的命令</b>、<b>完整报错</b>、<b><code class="ic">python3 --version</code> 和 <code class="ic">uname -a</code> 的输出</b></li>
+</ol>
+<p>只发一句「跑不起来」没人能帮你。三样齐了，基本一眼能定位。</p>
+<div class="warn">发截图或日志前，<b>先把 key 遮掉</b>。报错信息里有时会带出 <code class="ic">DEEPSEEK_KEY=sk-...</code> 那一行。</div>
+<hr>
+<h2 id="sec12">附录 A 命令速查</h2>
+<h3>安装与更新</h3>
+<div class="tw"><table><thead><tr><th>目的</th><th>命令</th></tr></thead><tbody><tr><td data-label="目的">换镜像源</td><td data-label="命令"><code class="ic">termux-change-repo</code></td></tr><tr><td data-label="目的">刷新软件列表</td><td data-label="命令"><code class="ic">pkg update</code></td></tr><tr><td data-label="目的">装 Python</td><td data-label="命令"><code class="ic">pkg install -y python</code></td></tr><tr><td data-label="目的">装 adb</td><td data-label="命令"><code class="ic">pkg install -y android-tools</code></td></tr><tr><td data-label="目的">装 OCR 三件套</td><td data-label="命令"><code class="ic">pkg install -y tesseract poppler python-pillow</code></td></tr><tr><td data-label="目的">一键更新</td><td data-label="命令"><code class="ic">cd ~/work &amp;&amp; sh update.sh</code></td></tr><tr><td data-label="目的">只看版本差异</td><td data-label="命令"><code class="ic">sh update.sh --list</code></td></tr></tbody></table></div>
+<h3>启动</h3>
+<div class="tw"><table><thead><tr><th>目的</th><th>命令</th></tr></thead><tbody><tr><td data-label="目的">演习模式（不花钱）</td><td data-label="命令"><code class="ic">python3 webchat.py --mock</code></td></tr><tr><td data-label="目的">正常启动</td><td data-label="命令"><code class="ic">python3 webchat.py</code></td></tr><tr><td data-label="目的">换端口</td><td data-label="命令"><code class="ic">python3 webchat.py --port 8800</code></td></tr><tr><td data-label="目的">允许局域网访问</td><td data-label="命令"><code class="ic">python3 webchat.py --host 0.0.0.0</code></td></tr><tr><td data-label="目的">不存历史</td><td data-label="命令"><code class="ic">python3 webchat.py --no-db</code></td></tr><tr><td data-label="目的">停止</td><td data-label="命令">Ctrl+C（音量减 + C），或 <code class="ic">pkill -f webchat.py</code></td></tr></tbody></table></div>
+<h3>控屏（adui.py）</h3>
+<div class="tw"><table><thead><tr><th>目的</th><th>命令</th></tr></thead><tbody><tr><td data-label="目的">一键修复连接</td><td data-label="命令"><code class="ic">python3 adui.py doctor</code></td></tr><tr><td data-label="目的">扫端口并连接</td><td data-label="命令"><code class="ic">python3 adui.py scan</code></td></tr><tr><td data-label="目的">配对</td><td data-label="命令"><code class="ic">python3 adui.py pair 127.0.0.1:端口 配对码</code></td></tr><tr><td data-label="目的">看设备信息</td><td data-label="命令"><code class="ic">python3 adui.py info</code></td></tr><tr><td data-label="目的">看屏幕元素</td><td data-label="命令"><code class="ic">python3 adui.py look</code></td></tr><tr><td data-label="目的">点第 N 个</td><td data-label="命令"><code class="ic">python3 adui.py tap 3</code></td></tr><tr><td data-label="目的">点坐标</td><td data-label="命令"><code class="ic">python3 adui.py tap 540 1200</code></td></tr><tr><td data-label="目的">按文字点</td><td data-label="命令"><code class="ic">python3 adui.py tap-text 设置</code></td></tr><tr><td data-label="目的">输入中文</td><td data-label="命令"><code class="ic">python3 adui.py text &quot;内容&quot;</code></td></tr><tr><td data-label="目的">按键</td><td data-label="命令"><code class="ic">python3 adui.py key back</code>（back/home/enter/delete）</td></tr><tr><td data-label="目的">滑动</td><td data-label="命令"><code class="ic">python3 adui.py swipe 540 1600 540 600</code></td></tr><tr><td data-label="目的">滚动</td><td data-label="命令"><code class="ic">python3 adui.py scroll down 3</code></td></tr><tr><td data-label="目的">截屏</td><td data-label="命令"><code class="ic">python3 adui.py shot ~/work/s.png</code></td></tr><tr><td data-label="目的">截屏识别</td><td data-label="命令"><code class="ic">python3 adui.py ocr</code></td></tr><tr><td data-label="目的">启动 App</td><td data-label="命令"><code class="ic">python3 adui.py start com.tencent.mm</code></td></tr><tr><td data-label="目的">列 App</td><td data-label="命令"><code class="ic">python3 adui.py apps 微信</code></td></tr><tr><td data-label="目的">装中文输入法</td><td data-label="命令"><code class="ic">python3 adui.py ime-install</code></td></tr></tbody></table></div>
+<h3>OCR（ocr.py）</h3>
+<div class="tw"><table><thead><tr><th>目的</th><th>命令</th></tr></thead><tbody><tr><td data-label="目的">自检</td><td data-label="命令"><code class="ic">python3 ocr.py doctor</code></td></tr><tr><td data-label="目的">纯文字</td><td data-label="命令"><code class="ic">python3 ocr.py 图.png</code></td></tr><tr><td data-label="目的">带坐标</td><td data-label="命令"><code class="ic">python3 ocr.py 图.png --boxes</code></td></tr><tr><td data-label="目的">JSON</td><td data-label="命令"><code class="ic">python3 ocr.py 图.png --json</code></td></tr><tr><td data-label="目的">只认一块</td><td data-label="命令"><code class="ic">python3 ocr.py 图.png --crop 80,400,1000,900</code></td></tr><tr><td data-label="目的">小字放大</td><td data-label="命令"><code class="ic">python3 ocr.py 图.png --scale 2</code></td></tr><tr><td data-label="目的">PDF</td><td data-label="命令"><code class="ic">python3 ocr.py 文档.pdf --dpi 150</code></td></tr><tr><td data-label="目的">PDF 指定页</td><td data-label="命令"><code class="ic">python3 ocr.py 文档.pdf --first 1 --last 3</code></td></tr></tbody></table></div>
+<h3>逆向（rev.py）</h3>
+<div class="tw"><table><thead><tr><th>目的</th><th>命令</th></tr></thead><tbody><tr><td data-label="目的">一屏摘要</td><td data-label="命令"><code class="ic">python3 rev.py triage 文件</code></td></tr><tr><td data-label="目的">字符串</td><td data-label="命令"><code class="ic">python3 rev.py strings 文件 --grep http</code></td></tr><tr><td data-label="目的">APK 信息</td><td data-label="命令"><code class="ic">python3 rev.py apk 应用.apk</code></td></tr><tr><td data-label="目的">so 文件</td><td data-label="命令"><code class="ic">python3 rev.py elf 库.so</code></td></tr><tr><td data-label="目的">十六进制</td><td data-label="命令"><code class="ic">python3 rev.py hexdump 文件 --off 0x1000 --len 256</code></td></tr><tr><td data-label="目的">反汇编</td><td data-label="命令"><code class="ic">python3 rev.py r2 文件 pdf @ main</code></td></tr></tbody></table></div>
+<hr>
+<h2 id="sec13">附录 B 文件清单</h2>
+<div class="tw"><table><thead><tr><th>文件</th><th>字节</th><th>干什么</th></tr></thead><tbody><tr><td data-label="文件"><code class="ic">webchat.py</code></td><td data-label="字节">45068</td><td data-label="干什么">网页服务 + 对话循环 + 工具执行</td></tr><tr><td data-label="文件"><code class="ic">static/app.html</code></td><td data-label="字节">5110</td><td data-label="干什么">网页骨架</td></tr><tr><td data-label="文件"><code class="ic">static/app.css</code></td><td data-label="字节">22706</td><td data-label="干什么">样式，含深色模式</td></tr><tr><td data-label="文件"><code class="ic">static/app.js</code></td><td data-label="字节">35216</td><td data-label="干什么">前端逻辑：会话、流式渲染、Markdown</td></tr><tr><td data-label="文件"><code class="ic">adui.py</code></td><td data-label="字节">47304</td><td data-label="干什么">安卓控屏</td></tr><tr><td data-label="文件"><code class="ic">ocr.py</code></td><td data-label="字节">33777</td><td data-label="干什么">本地 OCR</td></tr><tr><td data-label="文件"><code class="ic">rev.py</code></td><td data-label="字节">28616</td><td data-label="干什么">二进制侦察</td></tr><tr><td data-label="文件"><code class="ic">ui.py</code></td><td data-label="字节">16329</td><td data-label="干什么">Linux 桌面控屏（仅虚拟机）</td></tr><tr><td data-label="文件"><code class="ic">update.sh</code></td><td data-label="字节">8559</td><td data-label="干什么">一键更新</td></tr><tr><td data-label="文件"><code class="ic">MANUAL.html</code></td><td data-label="字节">69250</td><td data-label="干什么">速查版手册</td></tr></tbody></table></div>
+<hr>
+<h2 id="sec14">附录 C 安全边界</h2>
+<p>这套东西的权限<b>很大</b>，说清楚它到底能做什么：</p>
+<div class="tw"><table><thead><tr><th>能力</th><th>意味着</th></tr></thead><tbody><tr><td data-label="能力">执行任意 shell 命令</td><td data-label="意味着">它能删除你的文件、改系统设置、装软件。它不会主动这么干，但你要知道有这个能力</td></tr><tr><td data-label="能力">ADB 全权限</td><td data-label="意味着">能点任何界面、读任何屏幕内容、安装卸载应用</td></tr><tr><td data-label="能力">读工作目录所有文件</td><td data-label="意味着">包括你放在 <code class="ic">~/work</code> 里的 apk、截图、文档</td></tr><tr><td data-label="能力">会话库存明文</td><td data-label="意味着"><code class="ic">sessions.db</code> 是你在这台机器上干过的所有事的完整记录</td></tr><tr><td data-label="能力">网页界面无密码</td><td data-label="意味着"><code class="ic">--host 0.0.0.0</code> 时，同网段任何人打开浏览器就能指挥它</td></tr></tbody></table></div>
+<p>几条硬建议：</p>
+<ol>
+<li><b><code class="ic">HOST</code> 保持默认的 <code class="ic">127.0.0.1</code></b>，除非你清楚局域网里都有谁</li>
+<li><b>key 不要贴在聊天里、不要提交到 git</b>，泄露后立刻去后台删掉重建</li>
+<li><b><code class="ic">sessions.db</code> 别乱传</b>，里面有你的目录结构、文件名、命令历史</li>
+<li>重要操作前让它先 <code class="ic">look</code> 确认，别一句「把照片全删了」扔过去</li>
+</ol>
+<hr>
+<footer>这份手册对应 android-agent-kit v2（2026.11.19）。命令有变化以 <code>python3 脚本名 --help</code> 为准。</footer>
+</div>
+<div class="totop" id="totop">↑</div>
+<script>
+(function () {
+  var btn = document.getElementById('tocbtn');
+  var nav = document.getElementById('nav');
+  btn.onclick = function () { nav.classList.toggle('on'); };
+  nav.addEventListener('click', function (e) {
+    if (e.target.tagName === 'A') nav.classList.remove('on');
+  });
+
+  document.addEventListener('click', function (e) {
+    if (e.target.classList.contains('cp')) {
+      var pre = e.target.closest('.cb').querySelector('pre');
+      var txt = pre.innerText;
+      var done = function () {
+        e.target.textContent = '已复制';
+        setTimeout(function () { e.target.textContent = '复制'; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(done).catch(function () {
+          var ta = document.createElement('textarea');
+          ta.value = txt; document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); done(); } catch (err) {}
+          document.body.removeChild(ta);
+        });
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = txt; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); done(); } catch (err) {}
+        document.body.removeChild(ta);
+      }
+    }
+  });
+
+  var prog = document.getElementById('prog'), top = document.getElementById('totop');
+  function onScroll() {
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    var y = window.scrollY;
+    prog.style.width = (h > 0 ? (y / h * 100) : 0) + '%';
+    top.classList.toggle('on', y > 600);
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  top.onclick = function () { window.scrollTo({ top: 0, behavior: 'smooth' }); };
+})();
+</script>
+</body>
+</html>

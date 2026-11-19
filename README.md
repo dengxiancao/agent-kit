@@ -16,8 +16,9 @@ OCR 依赖系统的 Tesseract（`pkg install tesseract`），Pillow 可选。
 | `ocr.py` | 本地 OCR：图片 / PDF → 文字 + 坐标，彩色背景和深色模式都能认 | 手机 / 虚拟机 |
 | `ui.py` | Linux 桌面控屏：xdotool + OCR | 虚拟机 |
 | `patch_ui.py` | 把 `ui` 工具注入已有的 `agent.py` | 虚拟机 |
-| `MANUAL.html` | 完整部署手册（单文件，手机浏览器直接打开） | — |
-| `MANUAL.md` | 同一份手册的 Markdown 版 | — |
+| `START.html` | **零基础版手册**：从装 Termux 开始，含 Python 环境搭建 | — |
+| `MANUAL.html` | 速查版手册（单文件，手机浏览器直接打开） | — |
+| `MANUAL.md` | 速查版的 Markdown 版 | — |
 | `update.sh` | 一键更新全部脚本：先下临时文件、校验语法、失败不覆盖 | 手机 / 虚拟机 |
 
 ## 更新
@@ -81,7 +82,11 @@ chmod 600 ~/.config/webchat/env
 > 完整流程（Termux 环境、API 配置、ADB 无线调试配对、中文输入、保活、开机自启、断线补救）见手册，
 > 里面每一步都有预期输出和失败对照表。**建议先读手册再动手**，尤其是 ADB 那一节。
 >
-> 在线看：<https://dengxiancao.github.io/android-agent-kit/MANUAL.html> （手机浏览器直接打开，排版自适应）
+> 在线看：
+> - 没接触过命令行：<https://dengxiancao.github.io/android-agent-kit/START.html>
+> - 已经会用终端：<https://dengxiancao.github.io/android-agent-kit/MANUAL.html>
+>
+> 两份都是单文件，手机浏览器直接打开，排版自适应。
 
 ## 对话记在哪
 
