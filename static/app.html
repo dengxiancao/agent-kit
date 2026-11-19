@@ -33,6 +33,9 @@
     <div class="side-foot">
       <div class="avatar">D</div>
       <span class="fn" id="footinfo">local</span>
+      <button class="iconbtn" id="cleanbtn" title="存储与清理">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>
+      </button>
       <button class="iconbtn" id="theme" title="切换深色">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
       </button>
@@ -47,7 +50,7 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
       <div class="title" id="title">新对话</div>
-      <span class="chip br" id="chip-model">deepseek-chat</span>
+      <span class="chip br pick" id="chip-model" title="切换模型">deepseek-chat</span>
       <span class="chip hide-m" id="chip-ctx">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg>
         <span>上下文 0 / 64k</span>
@@ -75,7 +78,7 @@
         <div class="cbox" id="cbox">
           <textarea id="ta" rows="1" placeholder="说点什么，或让它干活…"></textarea>
           <div class="cbot">
-            <span class="lbl" id="lbl-model">
+            <span class="lbl pick" id="lbl-model">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4.5 13.5H11l-1 8.5L19.5 10H13z"/></svg>
               <span>deepseek-chat</span>
             </span>
@@ -105,6 +108,9 @@
   </aside>
 </div>
 
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-card" id="sheetcard"></div>
+</div>
 <div class="popmenu" id="pop"></div>
 <script src="/static/app.js"></script>
 </body>
