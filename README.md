@@ -17,6 +17,18 @@ OCR 依赖系统的 Tesseract（`pkg install tesseract`），Pillow 可选。
 | `patch_ui.py` | 把 `ui` 工具注入已有的 `agent.py` | 虚拟机 |
 | `MANUAL.html` | 完整部署手册（单文件，手机浏览器直接打开） | — |
 | `MANUAL.md` | 同一份手册的 Markdown 版 | — |
+| `update.sh` | 一键更新全部脚本：先下临时文件、校验语法、失败不覆盖 | 手机 / 虚拟机 |
+
+## 更新
+
+```bash
+curl -fL -o update.sh.part https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/update.sh
+mv update.sh.part update.sh && chmod +x update.sh
+sh update.sh
+```
+
+之后每次只要 `sh update.sh`。它先下到临时文件、比对内容、对 `.py` 做语法预检，
+任一步不过就保留原文件；镜像不通会自动换。`--list` 只看版本差，`sh update.sh ocr.py` 只更一个。
 
 ## 30 秒开始
 
