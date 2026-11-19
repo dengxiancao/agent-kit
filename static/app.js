@@ -14,10 +14,12 @@
     running: false,
     ac: null,
     lastSeq: 0,
-    ctxLimit: 64000,
+    ctxLimit: 48000,
     health: {},
     tokenUsed: 0,
-    stats: null
+    stats: null,
+    models: [],
+    model: ''
   };
   var selToken = 0;
   var nearBottom = true;
@@ -35,6 +37,11 @@
     if (n >= 10000) return (n / 1000).toFixed(1).replace('.0', '') + 'k';
     if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
     return String(n);
+  }
+
+  function limTxt(n) {
+    if (!n) return '0';
+    return n >= 1000 ? ((n / 1000).toFixed(n % 1000 ? 1 : 0) + 'k') : String(n);
   }
 
   function secs(ms) {
@@ -345,23 +352,39 @@
     return el;
   }
 
-  function addFooter(box, meta) {
+  var ICON = {
+    copy: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+      '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>',
+    regen: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+      '<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>',
+    branch: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+      '<circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="12" r="2.2"/>' +
+      '<path d="M6 7.2v9.6M8.2 5h4.3A3.5 3.5 0 0116 8.5v1.3"/></svg>'
+  };
+
+  function addFooter(box, meta, opts) {
+    opts = opts || {};
     if (!meta) return;
     var parts = [];
     if (meta.steps) parts.push('<span>' + meta.steps + ' 步</span>');
     if (meta.ms) parts.push('<span>' + secs(meta.ms) + '</span>');
     if (meta.tokens) parts.push('<span>' + num(meta.tokens) + ' tokens</span>');
-    if (!parts.length) return;
+    if (!parts.length && !opts.regen) return;
+    var acts = '<button class="cpmsg" title="复制">' + ICON.copy + '</button>' +
+      (opts.regen ? '<button class="regen" title="重新生成这一轮">' + ICON.regen + '</button>' : '') +
+      (opts.seq ? '<button class="brnch" title="从这里分叉出一个新对话">' + ICON.branch + '</button>' : '');
     var el = document.createElement('div');
     el.className = 'mfoot';
     el.innerHTML = parts.join('<span class="sep">·</span>') +
-      '<div class="acts"><button class="cpmsg" title="复制">' +
-      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-      '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg></button></div>';
+      '<div class="acts">' + acts + '</div>';
     el.querySelector('.cpmsg').onclick = function () {
       var t = $('.body', box).innerText;
       copyText(t);
     };
+    var rg = el.querySelector('.regen');
+    if (rg) rg.onclick = function () { regenerate(); };
+    var br = el.querySelector('.brnch');
+    if (br) br.onclick = function () { branchAt(opts.seq); };
     $('.body', box).appendChild(el);
   }
 
@@ -377,6 +400,14 @@
     var d = document.createElement('div');
     d.className = 'interrupted';
     d.innerHTML = '<span>任务被中断，没有拿到工具结果。回一句「继续」可以接着跑。</span>';
+    feed.appendChild(d);
+    scroll();
+  }
+
+  function addDivider(text) {
+    var d = document.createElement('div');
+    d.className = 'divider';
+    d.innerHTML = '<span>' + esc(text) + '</span>';
     feed.appendChild(d);
     scroll();
   }
@@ -473,7 +504,9 @@
   }
 
   document.addEventListener('click', function (e) {
-    if (!e.target.closest('#pop') && !e.target.closest('.moar')) popEl.classList.remove('on');
+    if (!e.target.closest('#pop') && !e.target.closest('.moar') && !e.target.closest('.pick')) {
+      popEl.classList.remove('on');
+    }
   });
 
   async function loadSessions(q) {
@@ -491,8 +524,13 @@
     if (!msgs.length) { showEmpty(); return; }
     var box = null, acc = null;
 
-    function flushAcc() {
-      if (box && acc && (acc.steps || acc.ms || acc.tokens)) addFooter(box, acc);
+    function flushAcc(final) {
+      if (box && acc) {
+        addFooter(box, acc, {
+          regen: !!final && !S.running,
+          seq: box._seq || 0
+        });
+      }
       acc = null;
     }
 
@@ -506,6 +544,7 @@
       if (m.role === 'assistant') {
         if (!m.content && !m.tool_calls && !m.reasoning) return;
         if (!box) { box = newBot(); acc = { steps: 0, ms: 0, tokens: 0 }; }
+        box._seq = m.seq;
         var meta = {};
         try { meta = m.meta ? JSON.parse(m.meta) : {}; } catch (e) { }
         if (m.reasoning) addThink(box, m.reasoning, false);
@@ -534,7 +573,7 @@
         if (m.content && m.content.indexOf('（任务被中断') === 0) addInterrupted();
       }
     });
-    flushAcc();
+    flushAcc(true);
     scroll(true);
   }
 
@@ -555,6 +594,7 @@
       S.msgs = d.messages || [];
       S.running = !!d.running;
       $('#title').textContent = (d.session && d.session.title) || '新对话';
+      if (d.session && d.session.model) setModel(d.session.model);
       var list = S.msgs;
       if (S.running) {
         // 正在跑的这一轮以事件流为准，历史里先去掉，避免重复
@@ -618,6 +658,7 @@
     try {
       var st = await api('/api/sessions/' + S.sid + '/stats');
       S.stats = st;
+      if (st.model) setModel(st.model);
       renderStats(st);
     } catch (e) { }
   }
@@ -627,7 +668,7 @@
     var pct = Math.min(100, Math.round(ctx / S.ctxLimit * 100));
     var pctTxt = (ctx > 0 && pct === 0) ? '<1%' : pct + '%';
     var chip = $('#chip-ctx span');
-    if (chip) chip.textContent = '上下文 ' + num(ctx) + ' / ' + (S.ctxLimit / 1000) + 'k';
+    if (chip) chip.textContent = '上下文 ' + num(ctx) + ' / ' + limTxt(S.ctxLimit);
     $('#chip-ctx').className = 'chip hide-m' + (pct > 85 ? ' warn' : '');
 
     if (!st) { $('#insbody').innerHTML = ''; $('#insfoot').innerHTML = ''; return; }
@@ -636,12 +677,16 @@
     var html = '';
     html += '<div class="card"><div class="ch">上下文<span class="r">' + pctTxt + '</span></div>' +
       '<div class="bar"><i class="' + bars + '" style="width:' + Math.max(pct, 2) + '%"></i></div>' +
-      '<div class="mini"><span>' + num(ctx) + ' tokens</span><span>上限 ' + num(S.ctxLimit) + '</span></div>' +
+      '<div class="mini"><span>' + num(ctx) + ' tokens</span><span>上限 ' + limTxt(S.ctxLimit) + '</span></div>' +
       '<div style="height:9px"></div>' +
       '<div class="kv"><span>消息</span><b>' + st.messages + ' 条</b></div>' +
       '<div class="kv"><span>工具调用</span><b>' + st.steps + ' 次</b></div>' +
       '<div class="kv"><span>累计 token</span><b>' + num(st.tokens) + '</b></div>' +
       '<div class="kv"><span>剩余额度</span><b>' + num(Math.max(0, Math.round(S.ctxLimit * 0.85 - ctx))) + ' tokens</b></div>' +
+      (st.compacted ? '<div class="kv"><span>已折叠</span><b>' + st.compacted_msgs +
+        ' 条 → 摘要 ' + num(st.summary_chars) + ' 字</b></div>' : '') +
+      (st.messages > 2 ? '<button class="insbtn" data-act="compact">' +
+        (st.compacted ? '再压一次' : '压缩上下文') + '</button>' : '') +
       '</div>';
 
     html += '<div class="card"><div class="ch">累计用量' +
@@ -668,6 +713,7 @@
       '<div class="kv"><span>单轮上限</span><b>' + (S.health.max_turns || 100) + ' 步</b></div>' +
       '<div class="kv"><span>工具</span><b>6 个</b></div>' +
       '<div class="kv"><span>存储</span><b>' + (S.health.db_size ? (S.health.db_size / 1024).toFixed(0) + ' KB' : '—') + '</b></div>' +
+      '<button class="insbtn" data-act="clean">存储与清理</button>' +
       '</div>';
 
     $('#insbody').innerHTML = html;
@@ -715,6 +761,12 @@
       case 'title':
         $('#title').textContent = ev.v;
         loadSessions();
+        break;
+      case 'model':
+        setModel(ev.v);
+        break;
+      case 'compact':
+        addDivider('上下文已压缩 · ' + ev.removed + ' 条并入摘要，剩 ' + ev.kept + ' 条');
         break;
       case 'think':
         ensureTurn();
@@ -769,7 +821,7 @@
           addFooter(A.box, {
             steps: ev.steps, ms: ev.ms || (Date.now() - A.t0),
             tokens: ev.tokens ? (ev.tokens.out || (ev.tokens.in + ev.tokens.out)) : 0
-          });
+          }, { regen: true });
         }
         A = null;
         S.running = false;
@@ -786,9 +838,31 @@
     try {
       var d = await api('/api/sessions/' + S.sid + '/messages');
       S.msgs = d.messages || [];
+      attachBranchLast();
       loadStats();
       loadSessions();
     } catch (e) { }
+  }
+
+  /* 刚落地的这一轮是流式渲染的，当时还不知道 seq；跑完补一个分叉按钮 */
+  function attachBranchLast(seq) {
+    var boxes = feed.querySelectorAll('.msg.a');
+    if (!boxes.length) return;
+    var acts = boxes[boxes.length - 1].querySelector('.mfoot .acts');
+    if (!acts || acts.querySelector('.brnch')) return;
+    var s = seq;
+    if (!s) {
+      for (var i = S.msgs.length - 1; i >= 0; i--) {
+        if (S.msgs[i].role === 'assistant') { s = S.msgs[i].seq; break; }
+      }
+    }
+    if (!s) return;
+    var btn = document.createElement('button');
+    btn.className = 'brnch';
+    btn.title = '从这里分叉出一个新对话';
+    btn.innerHTML = ICON.branch;
+    btn.onclick = function () { branchAt(s); };
+    acts.appendChild(btn);
   }
 
   async function readSSE(resp, sid) {
@@ -869,6 +943,188 @@
     }
   }
 
+  /* ---------------- 模型 / 重新生成 / 分支 ---------------- */
+
+  function setModel(v) {
+    if (!v) return;
+    S.model = v;
+    $('#chip-model').textContent = v;
+    $('#lbl-model span').textContent = v;
+  }
+
+  function pickModel(anchor) {
+    var list = (S.models && S.models.length) ? S.models : [S.model || 'deepseek-chat'];
+    popEl.innerHTML = list.map(function (m) {
+      return '<button data-m="' + esc(m) + '"><span>' + esc(m) + '</span>' +
+        (m === S.model ? '<span class="cur">✓</span>' : '') + '</button>';
+    }).join('');
+    popEl.classList.add('on');
+    var r = anchor.getBoundingClientRect();
+    var h = popEl.offsetHeight || 96;
+    var top = r.bottom + 6;
+    if (top + h > innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    popEl.style.left = Math.max(8, Math.min(r.left, innerWidth - 190)) + 'px';
+    popEl.style.top = top + 'px';
+    popEl.querySelectorAll('button').forEach(function (b) {
+      b.onclick = async function () {
+        popEl.classList.remove('on');
+        var m = b.dataset.m;
+        setModel(m);
+        if (S.sid) {
+          try {
+            await api('/api/sessions/' + S.sid, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: m })
+            });
+            toast('已切换到 ' + m);
+          } catch (e) { toast('切换失败：' + e.message); }
+        } else {
+          toast('新会话将使用 ' + m);
+        }
+        loadStats();
+      };
+    });
+  }
+
+  function removeLastTurn() {
+    var us = feed.querySelectorAll('.msg.u');
+    if (!us.length) { clearThread(); return; }
+    var n = us[us.length - 1];
+    while (n) {
+      var nx = n.nextElementSibling;
+      n.remove();
+      n = nx;
+    }
+  }
+
+  async function regenerate() {
+    if (!S.sid || S.running || S.busy) return;
+    if (!confirm('重新生成最后一轮？这一轮的回复会被替换掉。')) return;
+    var sid = S.sid;
+    S.busy = true; S.running = true;
+    try {
+      var r = await fetch('/api/sessions/' + sid + '/regenerate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      });
+      if (r.status === 409) { toast('这个会话正在运行'); return; }
+      if (!r.ok) {
+        var t = '';
+        try { t = (await r.json()).error || ''; } catch (e) { }
+        toast(t || ('HTTP ' + r.status));
+        return;
+      }
+      removeLastTurn();
+      setState('run');
+      beginTurn();
+      await readSSE(r, sid);
+    } catch (e) {
+      if (e.name !== 'AbortError') addErr('重新生成失败：' + e.message);
+    } finally {
+      S.busy = false; S.running = false;
+      setState('idle');
+      refreshSessionMeta();
+    }
+  }
+
+  async function branchAt(seq) {
+    if (!S.sid || S.running || S.busy) return;
+    try {
+      var d = await api('/api/sessions/' + S.sid + '/branch', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(seq ? { seq: seq } : {})
+      });
+      await loadSessions();
+      selectSession(d.id);
+      toast('已从这条回复分叉');
+    } catch (e) { toast('分支失败：' + e.message); }
+  }
+
+  /* ---------------- 弹层：存储清理 ---------------- */
+
+  var sheetEl = $('#sheet'), sheetCard = $('#sheetcard');
+
+  function openSheet(html) {
+    sheetCard.innerHTML = html;
+    sheetEl.hidden = false;
+    document.body.classList.add('sheet-open');
+  }
+
+  function closeSheet() {
+    sheetEl.hidden = true;
+    document.body.classList.remove('sheet-open');
+  }
+
+  async function openClean() {
+    var o = {};
+    try { o = await api('/api/overview'); } catch (e) { }
+    var mb = function (n) { return (n / 1048576).toFixed(2) + ' MB'; };
+    openSheet(
+      '<div class="sh-h"><b>存储</b><button class="iconbtn" data-a="close">' +
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>' +
+      '</button></div>' +
+      '<div class="sh-b">' +
+      '<div class="kv"><span>会话</span><b>' + (o.sessions || 0) + ' 个（空会话 ' + (o.empty || 0) + '）</b></div>' +
+      '<div class="kv"><span>消息</span><b>' + (o.messages || 0) + ' 条</b></div>' +
+      '<div class="kv"><span>占用</span><b>' + mb(o.db_size || 0) + '</b></div>' +
+      '<div class="kv"><span>最老的一条</span><b>' + (o.oldest ? new Date(o.oldest * 1000).toLocaleDateString() : '—') + '</b></div>' +
+      '<label class="fld"><span>删掉多少天没动过的会话</span>' +
+      '<input id="cdays" type="number" min="1" max="3650" value="30"></label>' +
+      '<label class="chk"><input id="cempty" type="checkbox" checked> 同时清理空会话</label>' +
+      '<div class="sh-note" id="cnote">置顶的会话不会被删。删除不可恢复，建议先「预览」。</div>' +
+      '</div>' +
+      '<div class="sh-f"><button class="ghost" data-a="dry">预览</button>' +
+      '<button class="danger" data-a="run">清理</button></div>'
+    );
+  }
+
+  async function doClean(dry) {
+    var days = parseInt(($('#cdays') || {}).value || '30', 10) || 30;
+    var empty = ($('#cempty') || {}).checked !== false;
+    var note = $('#cnote');
+    note.textContent = dry ? '正在统计…' : '正在清理…';
+    try {
+      var r = await api('/api/cleanup', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: days, empty: empty, dry: dry })
+      });
+      if (dry) {
+        note.textContent = r.would_delete
+          ? '会删掉 ' + r.would_delete + ' 个会话，当前占用 ' + (r.db_size / 1048576).toFixed(2) + ' MB。'
+          : '没有符合条件的会话。';
+      } else {
+        note.textContent = '已删 ' + r.deleted + ' 个会话，回收 ' +
+          (r.freed / 1048576).toFixed(2) + ' MB。';
+        toast('清理完成，回收 ' + (r.freed / 1048576).toFixed(2) + ' MB');
+        await loadSessions();
+        if (S.sid && !S.sessions.some(function (s) { return s.id === S.sid; })) {
+          S.sid = null; S.msgs = []; S.stats = null;
+          showEmpty();
+          $('#title').textContent = '新对话';
+          renderStats(null);
+          setState('idle');
+        } else {
+          loadStats();
+        }
+      }
+    } catch (e) {
+      note.textContent = '失败：' + e.message;
+    }
+  }
+
+  sheetCard.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-a]');
+    if (!b) return;
+    var a = b.dataset.a;
+    if (a === 'close') closeSheet();
+    else if (a === 'dry') doClean(true);
+    else if (a === 'run') {
+      if (confirm('确定删除？删掉的会话无法恢复。')) doClean(false);
+    }
+  });
+  sheetEl.addEventListener('click', function (e) {
+    if (e.target === sheetEl) closeSheet();
+  });
+
   /* ---------------- 交互 ---------------- */
 
   ta.addEventListener('input', function () {
@@ -913,6 +1169,9 @@
   applyTheme();
 
   $('#newbtn').onclick = function () { newSession(); };
+  $('#chip-model').onclick = function () { pickModel(this); };
+  $('#lbl-model').onclick = function () { pickModel(this); };
+  $('#cleanbtn').onclick = openClean;
   $('#menu').onclick = function () { document.body.classList.toggle('drawer'); };
   $('#scrim').onclick = function () {
     document.body.classList.remove('drawer');
@@ -930,6 +1189,30 @@
   qEl.addEventListener('input', function () {
     clearTimeout(qTimer);
     qTimer = setTimeout(function () { loadSessions(qEl.value.trim()); }, 260);
+  });
+
+  $('#insbody').addEventListener('click', async function (e) {
+    var b = e.target.closest('[data-act]');
+    if (!b) return;
+    var act = b.dataset.act;
+    if (act === 'clean') return openClean();
+    if (act === 'compact') {
+      if (!S.sid || S.running || S.busy) { toast('先等这一轮跑完'); return; }
+      b.disabled = true;
+      b.textContent = '压缩中…';
+      try {
+        var r = await api('/api/sessions/' + S.sid + '/compact', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+        });
+        toast(r.ok ? ('已折叠 ' + r.removed + ' 条 · ' + r.before + ' → ' + r.after + ' tokens')
+          : (r.hint || '暂时不用压缩'));
+        loadStats();
+      } catch (err) {
+        toast('压缩失败：' + err.message);
+        b.disabled = false;
+        b.textContent = '压缩上下文';
+      }
+    }
   });
 
   $('#exportbtn').onclick = function () {
@@ -965,6 +1248,7 @@
     if (e.key === 'Escape') {
       document.body.classList.remove('drawer', 'ins');
       popEl.classList.remove('on');
+      closeSheet();
     }
   });
 
@@ -973,8 +1257,9 @@
   async function boot() {
     try {
       S.health = await api('/api/health');
-      $('#chip-model').textContent = S.health.model || 'model';
-      $('#lbl-model span').textContent = S.health.model || 'model';
+      S.models = S.health.models || [];
+      S.ctxLimit = S.health.ctx_limit || 48000;
+      setModel(S.health.model || 'deepseek-chat');
       $('#ver').textContent = 'v' + (S.health.version || '2');
       $('#footinfo').textContent = S.health.mock ? 'MOCK 演示模式' : (S.health.work || 'local');
       $('#lbl-work').textContent = (S.health.work || '').replace(/^.*\//, '~/…/');
