@@ -1095,7 +1095,11 @@ FALLBACK_HTML = """<!doctype html><meta charset=utf-8>
 <body style="font:15px system-ui;padding:40px;line-height:1.7">
 <h2>缺少 static 目录</h2>
 <p>webchat.py 需要同目录下的 <code>static/app.html</code>、<code>app.css</code>、<code>app.js</code>。</p>
-<p>从仓库重新拉一次即可：<code>sh update.sh</code></p>
+<p>先更新更新器，再全量拉一次：</p>
+<p><code>sh update.sh --self &amp;&amp; sh update.sh</code></p>
+<p>或者手动补三个文件（BASE 用镜像前缀）：</p>
+<p><code>mkdir -p static &amp;&amp; for f in app.html app.css app.js; do
+curl -fL -o static/$f "$BASE/static/$f"; done</code></p>
 </body>"""
 
 

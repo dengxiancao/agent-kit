@@ -28,7 +28,14 @@ mv update.sh.part update.sh && chmod +x update.sh
 sh update.sh
 ```
 
-之后每次只要 `sh update.sh`。它先下到临时文件、比对内容、对 `.py` 做语法预检，
+之后每次只要 `sh update.sh`。**从 v1 升到 v2 要多一步**（老版本不知道有 `static/` 目录）：
+
+```bash
+sh update.sh --self    # 先换更新器
+sh update.sh           # 再拉全部文件（含 static/ 三个）
+```
+
+更新器本身也没变过的话，直接 `sh update.sh` 就行。它先下到临时文件、比对内容、对 `.py` 做语法预检，
 任一步不过就保留原文件；镜像不通会自动换。`--list` 只看版本差，`sh update.sh ocr.py` 只更一个。
 
 ## 30 秒开始
