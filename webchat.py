@@ -30,13 +30,16 @@ import uuid
 import shlex
 import sqlite3
 import argparse
+import secrets
+import socket
 import threading
 import subprocess
 import queue
 import urllib.request
 import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from http.cookies import SimpleCookie
+from urllib.parse import urlparse, parse_qs, urlencode
 
 
 # ------------------------------------------------------------------ 配置
@@ -85,8 +88,53 @@ MAX_TURNS = int(os.environ.get("AGENT_MAX_TURNS", "100"))
 HOST = os.environ.get("WEBCHAT_HOST") or os.environ.get("HOST") or "127.0.0.1"
 PORT = int(os.environ.get("PORT", "8765"))
 DB_PATH = os.path.expanduser(os.environ.get("WEBCHAT_DB", "~/.local/share/webchat/sessions.db"))
+
+# 可选模型。前端顶部 chip 点一下就能换，存在会话上，下轮生效。
+MODELS = [m.strip() for m in os.environ.get(
+    "WEBCHAT_MODELS", "deepseek-chat,deepseek-reasoner").split(",") if m.strip()]
+if MODEL not in MODELS:
+    MODELS.insert(0, MODEL)
+
+# 上下文压缩：估算 token 超过 CTX_LIMIT 就把老消息揉成一段摘要，只保留最近 CTX_KEEP 条。
+# 摘要不花 token（本地规则生成），原始消息仍留在库里，界面照常能翻。
+CTX_LIMIT = int(os.environ.get("AGENT_CTX_LIMIT", "48000"))
+CTX_KEEP = int(os.environ.get("AGENT_CTX_KEEP", "12"))
+
 MOCK = False
 USE_DB = True
+TOKEN = ""
+
+
+def load_token(host):
+    """访问口令。只监听本机时不需要；一旦 0.0.0.0，必须有，否则同网段的人能看能指挥。
+
+    优先级：WEBCHAT_TOKEN 环境变量 > ~/.config/webchat/token > 自动生成。
+    生成后写文件（600），下次启动还是同一个，手机加一次书签就一直能用。
+    """
+    t = (os.environ.get("WEBCHAT_TOKEN") or "").strip()
+    if t:
+        return t
+    path = os.path.expanduser("~/.config/webchat/token")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            t = f.read().strip()
+        if t:
+            return t
+    except OSError:
+        pass
+    if host in ("127.0.0.1", "localhost", "::1"):
+        return ""
+    t = secrets.token_urlsafe(12)
+    try:
+        d = os.path.dirname(path)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(t + "\n")
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return t
 
 
 # ------------------------------------------------------------------ 存储层
@@ -103,7 +151,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   work        TEXT,
   steps       INTEGER DEFAULT 0,
   tokens_in   INTEGER DEFAULT 0,
-  tokens_out  INTEGER DEFAULT 0
+  tokens_out  INTEGER DEFAULT 0,
+  summary     TEXT,
+  compact_upto INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -146,6 +196,58 @@ def now():
     return int(time.time())
 
 
+def one_line(s, n=100):
+    s = re.sub(r"\s+", " ", (s or "").strip())
+    return s[:n] + "…" if len(s) > n else s
+
+
+def summarize_rows(rows, prev=None, limit=1500):
+    """把一批消息压成要点，纯本地规则，不调模型。
+
+    原则：用户的诉求不能丢，助手的结论留首句，工具只留统计和碰过的文件。
+    """
+    asked, said, tools, files = [], [], {}, []
+    for r in rows:
+        role, c = r["role"], (r["content"] or "").strip()
+        if role == "user" and c:
+            asked.append(one_line(c, 110))
+        elif role == "assistant" and c:
+            said.append(one_line(c, 130))
+        elif role == "tool":
+            nm = r["name"] or "tool"
+            tools[nm] = tools.get(nm, 0) + 1
+            for m in re.finditer(r"[\w./-]+\.(?:py|sh|md|json|txt|log|apk|so|elf|png|jpg|db)\b",
+                                 c[:600]):
+                t = m.group(0)
+                if t not in files and len(files) < 8:
+                    files.append(t)
+    out = []
+    if prev:
+        out.append("此前摘要：" + one_line(prev, 400))
+    def uniq(seq):
+        seen, out = set(), []
+        for x in seq:
+            if x not in seen:
+                seen.add(x)
+                out.append(x)
+        return out
+
+    if asked:
+        out.append("用户提出过：")
+        out += ["- " + a for a in uniq(asked)[-10:]]
+    if said:
+        out.append("已达成的结论：")
+        out += ["- " + a for a in uniq(said)[-6:]]
+    if tools:
+        out.append("用过的工具：" + "、".join("%s×%d" % (k, v) for k, v in tools.items()))
+    if files:
+        out.append("碰过的文件：" + "、".join(files))
+    txt = "\n".join(out)
+    if len(txt) > limit:
+        txt = txt[:limit] + "\n…（更早的细节已省略）"
+    return txt
+
+
 class Store:
     """会话与消息的持久化。单连接 + 锁，够用且不会 database is locked。"""
 
@@ -163,6 +265,11 @@ class Store:
             self.con.execute("PRAGMA synchronous=NORMAL")
             self.con.execute("PRAGMA busy_timeout=5000")
             self.con.executescript(SCHEMA)
+            # 老库没有这两列，补上（v2.1 的上下文压缩要存摘要和压缩边界）
+            cols = {r[1] for r in self.con.execute("PRAGMA table_info(sessions)")}
+            for name, ddl in (("summary", "TEXT"), ("compact_upto", "INTEGER DEFAULT 0")):
+                if name not in cols:
+                    self.con.execute("ALTER TABLE sessions ADD COLUMN %s %s" % (name, ddl))
             try:
                 self.con.executescript(FTS_SCHEMA)
                 self.fts = True
@@ -262,15 +369,26 @@ class Store:
             rows = self.con.execute(sql, (sid, after_seq)).fetchall()
         return [dict(r) for r in rows]
 
-    def context(self, sid, limit=120):
-        """还原成可以直接送 API 的 messages 数组。"""
+    def context(self, sid, limit=None):
+        """还原成可以直接送 API 的 messages 数组。
+
+        压缩过的会话只从 compact_upto 之后取消息，并把摘要拼进 system。
+        原始消息一条不删，界面还能往上翻。
+        """
         self.repair(sid)
-        rows = self.messages(sid)
+        s = self.get(sid) or {}
+        upto = int(s.get("compact_upto") or 0)
+        rows = self.messages(sid, after_seq=upto)
         if limit and len(rows) > limit:
             rows = rows[-limit:]
             while rows and rows[0]["role"] != "user":
                 rows.pop(0)
-        out = [{"role": "system", "content": SYSTEM}]
+        sysmsg = SYSTEM
+        summ = (s.get("summary") or "").strip()
+        if summ:
+            sysmsg = (SYSTEM + "\n\n【早期对话摘要】（为省上下文，较早的消息已折叠，"
+                      "原始记录仍在本地）\n" + summ)
+        out = [{"role": "system", "content": sysmsg}]
         for r in rows:
             role = r["role"]
             if role == "user":
@@ -285,6 +403,145 @@ class Store:
                 out.append({"role": "tool", "tool_call_id": r["tool_call_id"],
                             "content": r["content"] or ""})
         return out
+
+    def ctx_tokens(self, sid):
+        """当前真正会发出去的那部分，估算 token。"""
+        return sum(est_tokens(m.get("content") or "") for m in self.context(sid))
+
+    def compact(self, sid, keep=None, force=False):
+        """把较早的消息折成一段摘要。返回 dict 或 None（不够长就不动）。
+
+        摘要用本地规则生成：只留用户问句首行、助手结论首行、工具调用统计。
+        不调模型 = 零成本、零延迟、行为可预测。
+        """
+        keep = CTX_KEEP if keep is None else max(2, int(keep))
+        s = self.get(sid)
+        if not s:
+            return None
+        upto = int(s.get("compact_upto") or 0)
+        rows = self.messages(sid, after_seq=upto)
+        before = sum(est_tokens(r["content"] or "") + est_tokens(r["reasoning"] or "")
+                     for r in rows)
+        if not force and before < CTX_LIMIT:
+            return None
+        # 切点必须落在 user 上，否则会把一轮问答劈开；至少保留最后一轮完整
+        users = [i for i, r in enumerate(rows) if r["role"] == "user"]
+        if len(users) < 2:
+            return None
+        target = max(0, len(rows) - keep)
+        cut = None
+        for i in users:
+            if i <= target:
+                cut = i
+        if cut is None or cut <= 0:
+            cut = users[-1]          # 第一轮就撑爆了，只留最后一轮
+        if cut <= 0 or cut >= len(rows):
+            return None
+        old = rows[:cut]
+        summ = summarize_rows(old, prev=s.get("summary"))
+        boundary = old[-1]["seq"]
+        with self.lock:
+            self.con.execute(
+                "UPDATE sessions SET summary=?, compact_upto=?, updated_at=? WHERE id=?",
+                (summ, boundary, now(), sid))
+            self.con.commit()
+        after = sum(est_tokens(r["content"] or "") + est_tokens(r["reasoning"] or "")
+                    for r in rows[cut:])
+        return {"removed": len(old), "before": before, "after": after,
+                "kept": len(rows) - cut, "summary_chars": len(summ)}
+
+    def truncate(self, sid, seq_from):
+        """删掉 seq >= seq_from 的消息（重新生成 / 建分支时用）。"""
+        with self.lock:
+            n = self.con.execute("SELECT COUNT(*) FROM messages WHERE sid=? AND seq>=?",
+                                 (sid, seq_from)).fetchone()[0]
+            self.con.execute("DELETE FROM messages WHERE sid=? AND seq>=?", (sid, seq_from))
+            self.con.execute(
+                "UPDATE sessions SET compact_upto=0, summary=NULL, updated_at=? "
+                "WHERE id=? AND compact_upto>=?", (now(), sid, seq_from))
+            self.con.commit()
+        return n
+
+    def clone(self, sid, upto_seq=None, title=None):
+        """从某条消息处分叉：复制会话到新 id，只带走 upto_seq 及其之前的内容。"""
+        src = self.get(sid)
+        if not src:
+            return None
+        new_id = self.create((title or src["title"] or "新对话") + " · 分支")
+        rows = self.messages(sid)
+        if upto_seq:
+            rows = [r for r in rows if r["seq"] <= upto_seq]
+        with self.lock:
+            for r in rows:
+                self.con.execute(
+                    "INSERT INTO messages(sid,seq,role,content,reasoning,tool_calls,"
+                    "tool_call_id,name,meta,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (new_id, r["seq"], r["role"], r["content"], r["reasoning"],
+                     r["tool_calls"], r["tool_call_id"], r["name"], r["meta"],
+                     r["created_at"]))
+            self.con.execute(
+                "UPDATE sessions SET model=?, work=?, steps=0, tokens_in=0, tokens_out=0, "
+                "summary=?, compact_upto=? WHERE id=?",
+                (src["model"] or MODEL, src["work"] or WORK,
+                 src.get("summary"), src.get("compact_upto") or 0, new_id))
+            self.con.commit()
+        return new_id
+
+    def last_user(self, sid):
+        with self.lock:
+            r = self.con.execute(
+                "SELECT * FROM messages WHERE sid=? AND role='user' "
+                "ORDER BY seq DESC LIMIT 1", (sid,)).fetchone()
+        return dict(r) if r else None
+
+    def overview(self):
+        """全局用量，库清理面板用。"""
+        with self.lock:
+            n_sess = self.con.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+            n_msg = self.con.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+            n_empty = self.con.execute(
+                "SELECT COUNT(*) FROM sessions s WHERE NOT EXISTS "
+                "(SELECT 1 FROM messages m WHERE m.sid=s.id)").fetchone()[0]
+            rows = self.con.execute(
+                "SELECT id,title,updated_at,pinned FROM sessions "
+                "ORDER BY updated_at ASC").fetchall()
+            tin = self.con.execute("SELECT COALESCE(SUM(tokens_in),0) FROM sessions").fetchone()[0]
+            tout = self.con.execute("SELECT COALESCE(SUM(tokens_out),0) FROM sessions").fetchone()[0]
+        return {"sessions": n_sess, "messages": n_msg, "empty": n_empty,
+                "oldest": rows[0]["updated_at"] if rows else 0,
+                "db_size": self.size(), "tokens_in": tin, "tokens_out": tout,
+                "old": [dict(r) for r in rows if r["updated_at"] < now() - 30 * 86400][:200]}
+
+    def cleanup(self, days=30, drop_empty=True, vacuum=True, dry=False):
+        """库清理：删空会话 + 删 N 天没动过且没置顶的会话，再 VACUUM 收空间。"""
+        cutoff = now() - max(1, int(days)) * 86400
+        victim = []
+        with self.lock:
+            if drop_empty:
+                victim += [r[0] for r in self.con.execute(
+                    "SELECT id FROM sessions WHERE updated_at<? AND pinned=0 AND NOT EXISTS "
+                    "(SELECT 1 FROM messages m WHERE m.sid=sessions.id)",
+                    (now() - 3600,)).fetchall()]
+            victim += [r[0] for r in self.con.execute(
+                "SELECT id FROM sessions WHERE updated_at<? AND pinned=0", (cutoff,)).fetchall()]
+        victim = [v for v in dict.fromkeys(victim) if v]
+        before = self.size()
+        if dry:
+            return {"would_delete": len(victim), "db_size": before, "dry": True,
+                    "ids": victim[:50]}
+        for sid in victim:
+            self.delete(sid)
+        if vacuum:
+            with self.lock:
+                try:
+                    self.con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    self.con.commit()
+                    self.con.execute("VACUUM")
+                    self.con.commit()
+                except sqlite3.Error:
+                    pass
+        return {"deleted": len(victim), "db_size": self.size(), "before": before,
+                "freed": max(0, before - self.size())}
 
     def repair(self, sid):
         """补掉崩溃时留下的半条消息：assistant 有 tool_calls，但 tool 结果没写回。
@@ -327,11 +584,14 @@ class Store:
         with self.lock:
             s = self.get(sid)
             rows = self.con.execute(
-                "SELECT role, name, meta, content, reasoning FROM messages WHERE sid=?",
+                "SELECT role, name, meta, content, reasoning, seq FROM messages WHERE sid=?",
                 (sid,)).fetchall()
         chars = sum(len(r["content"] or "") + len(r["reasoning"] or "") for r in rows)
-        ctx = sum(est_tokens(r["content"] or "") + est_tokens(r["reasoning"] or "")
-                  for r in rows)
+        upto = int((s or {}).get("compact_upto") or 0)
+        summ = (s or {}).get("summary") or ""
+        # ctx 是「真正发出去的那部分」，压缩后要明显变小，否则进度条没意义
+        ctx = est_tokens(summ) + sum(est_tokens(r["content"] or "") + est_tokens(r["reasoning"] or "")
+                                     for r in rows if r["seq"] > upto)
         tools = [dict(r) for r in rows if r["role"] == "tool"]
         msgs = len([r for r in rows if r["role"] in ("user", "assistant")])
         return {
@@ -339,6 +599,11 @@ class Store:
             "messages": msgs,
             "chars": chars,
             "ctx": ctx,
+            "ctx_all": sum(est_tokens(r["content"] or "") + est_tokens(r["reasoning"] or "")
+                           for r in rows),
+            "compacted": bool(upto),
+            "compacted_msgs": len([r for r in rows if r["seq"] <= upto]),
+            "summary_chars": len(summ),
             "tokens": s["tokens_in"] + s["tokens_out"] if s else 0,
             "tokens_in": s["tokens_in"] if s else 0,
             "tokens_out": s["tokens_out"] if s else 0,
@@ -597,8 +862,8 @@ SYSTEM = build_system(WORK)
 
 # ------------------------------------------------------------------ 模型调用
 
-def stream_chat(msgs):
-    body = json.dumps({"model": MODEL, "messages": msgs, "tools": TOOLS,
+def stream_chat(msgs, model=None):
+    body = json.dumps({"model": model or MODEL, "messages": msgs, "tools": TOOLS,
                        "tool_choice": "auto", "stream": True,
                        "stream_options": {"include_usage": True},
                        "temperature": 0.3}, ensure_ascii=False).encode("utf-8")
@@ -687,8 +952,11 @@ def make_title(text):
 def run_agent(sid, user_text, bus, stop_ev):
     """跑一轮：把每条消息写库，把每个事件发到 bus。客户端断开也不影响它跑完。"""
     emit = bus.pub
+    sess = STORE.get(sid) if STORE else None
+    model = (sess or {}).get("model") or MODEL
     msgs = STORE.context(sid) if STORE else [{"role": "system", "content": SYSTEM}]
     emit({"t": "user", "v": user_text})
+    emit({"t": "model", "v": model})
 
     steps = 0
     turns = 0
@@ -697,6 +965,7 @@ def run_agent(sid, user_text, bus, stop_ev):
     all_text = ""
     finished = False
     think_acc = ""
+    compacted = 0
 
     if STORE:
         STORE.add(sid, "user", content=user_text)
@@ -709,7 +978,26 @@ def run_agent(sid, user_text, bus, stop_ev):
     else:
         msgs.append({"role": "user", "content": user_text})
 
-    gen = mock_chat if MOCK else stream_chat
+    def shrink():
+        """超预算就把老消息折成摘要，然后把 msgs 整体换掉。"""
+        nonlocal msgs, compacted
+        if not STORE or compacted >= 2:
+            return
+        try:
+            r = STORE.compact(sid)
+        except Exception:
+            return
+        if not r:
+            return
+        compacted += 1
+        msgs = STORE.context(sid)
+        emit({"t": "compact", "removed": r["removed"], "before": r["before"],
+              "after": r["after"], "kept": r["kept"]})
+
+    def gen(m):
+        return mock_chat(m) if MOCK else stream_chat(m, model)
+
+    shrink()
 
     for turn in range(MAX_TURNS):
         if stop_ev.is_set():
@@ -796,6 +1084,7 @@ def run_agent(sid, user_text, bus, stop_ev):
                 STORE.bump(sid, steps=1)
 
         trim(msgs)
+        shrink()
 
     stopped = stop_ev.is_set()
     if not finished and not stopped:
@@ -816,6 +1105,7 @@ def run_agent(sid, user_text, bus, stop_ev):
 
     emit({"t": "done", "steps": steps, "turns": turns, "ms": total_ms,
           "hit_limit": (not finished and not stopped), "stopped": stopped,
+          "compacted": compacted,
           "tokens": {"in": used_in, "out": used_out}})
 
     with RUN_LOCK:
@@ -856,7 +1146,7 @@ MIME = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "webchat/2.0"
+    server_version = "webchat/2.1"
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
@@ -896,11 +1186,65 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write((head + "data: " + data + "\n\n").encode("utf-8"))
         self.wfile.flush()
 
+    # ---------- 鉴权 ----------
+    def authed(self):
+        if not TOKEN:
+            return True
+        c = SimpleCookie(self.headers.get("Cookie") or "")
+        if "webchat_k" in c and c["webchat_k"].value == TOKEN:
+            return True
+        if (self.headers.get("X-Token") or "") == TOKEN:
+            return True
+        if (parse_qs(urlparse(self.path).query).get("k") or [""])[0] == TOKEN:
+            return True
+        return False
+
+    def auth_fail(self):
+        """不带口令时给一页人话，别只甩 401。"""
+        body = ("<!doctype html><meta charset=utf-8><title>需要口令</title>"
+                "<div style=\"font:15px/1.8 system-ui;padding:48px 26px;max-width:560px;margin:0 auto\">"
+                "<h3>这个地址需要口令</h3>"
+                "<p>为了不让同一 WiFi 下的其他人看到你的会话和命令记录，"
+                "服务开了访问口令。</p>"
+                "<p>用启动时打印的那个完整链接（结尾带 <code>?k=…</code>）打开一次即可，"
+                "之后浏览器会记住。</p>"
+                "<p style=\"color:#888\">口令存在 <code>~/.config/webchat/token</code>，"
+                "也可以在启动终端里执行 <code>cat ~/.config/webchat/token</code> 查看。</p></div>")
+        self._send(401, "text/html; charset=utf-8", body)
+
+    def cookie_redirect(self):
+        """用 ?k= 打开过就种 cookie，然后跳到不带参数的地址，避免口令留在地址栏/历史里。"""
+        if not TOKEN:
+            return False
+        u = urlparse(self.path)
+        q = parse_qs(u.query)
+        if (q.get("k") or [""])[0] != TOKEN:
+            return False
+        q.pop("k", None)
+        if (u.path or "").startswith("/api/"):
+            return False        # 接口直接放行，不必来回跳
+        loc = u.path or "/"
+        rest = urlencode({k: v[0] for k, v in q.items() if v})
+        if rest:
+            loc += "?" + rest
+        self.send_response(302)
+        self.send_header("Set-Cookie",
+                         "webchat_k=%s; Path=/; Max-Age=15552000; HttpOnly; SameSite=Lax" % TOKEN)
+        self.send_header("Location", loc)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return True
+
     # ---------- 路由 ----------
     def do_GET(self):
         u = urlparse(self.path)
         p = u.path
         q = parse_qs(u.query)
+
+        if self.cookie_redirect():
+            return
+        if not self.authed():
+            return self.auth_fail()
 
         if p in ("/", "/index.html"):
             return self.serve_static("app.html")
@@ -943,16 +1287,30 @@ class Handler(BaseHTTPRequestHandler):
             return self.js({"sessions": STORE.list(qq or None)})
 
         if p == "/api/health":
-            return self.js({"ok": True, "model": MODEL, "mock": MOCK, "work": WORK,
-                            "db": DB_PATH if USE_DB else None,
+            return self.js({"ok": True, "model": MODEL, "models": MODELS, "mock": MOCK,
+                            "work": WORK, "db": DB_PATH if USE_DB else None,
                             "db_size": STORE.size() if STORE else 0,
-                            "max_turns": MAX_TURNS, "version": "2.0"})
+                            "max_turns": MAX_TURNS, "ctx_limit": CTX_LIMIT,
+                            "ctx_keep": CTX_KEEP, "auth": bool(TOKEN), "version": "2.1"})
+
+        if p == "/api/models":
+            return self.js({"models": MODELS, "default": MODEL})
+
+        if p == "/api/overview":
+            if not STORE:
+                return self.js({"sessions": 0, "messages": 0, "empty": 0,
+                                "db_size": 0, "old": []})
+            d = STORE.overview()
+            d["unused_days"] = 30
+            return self.js(d)
 
         return self._send(404, "text/plain; charset=utf-8", "not found")
 
     def do_POST(self):
         u = urlparse(self.path)
         p = u.path
+        if not self.authed():
+            return self.auth_fail()
         body = self.body()
 
         if p == "/api/sessions":
@@ -970,10 +1328,65 @@ class Handler(BaseHTTPRequestHandler):
                 return self.js({"error": "empty message"}, 400)
             if not STORE or not STORE.get(sid):
                 return self.js({"error": "not found"}, 404)
+            mdl = (body.get("model") or "").strip()
+            if mdl:
+                STORE.update(sid, model=mdl)
             bus = start_run(sid, text)
             if bus is None:
                 return self.js({"error": "running", "hint": "这个会话正在运行"}, 409)
             return self.stream(sid, 0)
+
+        m = re.match(r"^/api/sessions/([^/]+)/regenerate$", p)
+        if m:
+            sid = m.group(1)
+            if not STORE or not STORE.get(sid):
+                return self.js({"error": "not found"}, 404)
+            if is_running(sid):
+                return self.js({"error": "running"}, 409)
+            last = STORE.last_user(sid)
+            if not last:
+                return self.js({"error": "没有可以重新生成的消息"}, 400)
+            # 砍掉最后一轮（用户消息 + 助手回复 + 工具结果），再用原文重跑
+            STORE.truncate(sid, last["seq"])
+            STORE.update(sid, steps=0, updated_at=now())
+            bus = start_run(sid, last["content"] or "")
+            if bus is None:
+                return self.js({"error": "running"}, 409)
+            return self.stream(sid, 0)
+
+        m = re.match(r"^/api/sessions/([^/]+)/branch$", p)
+        if m:
+            sid = m.group(1)
+            if not STORE or not STORE.get(sid):
+                return self.js({"error": "not found"}, 404)
+            upto = body.get("seq")
+            new_id = STORE.clone(sid, int(upto) if upto else None,
+                                 title=(STORE.get(sid) or {}).get("title"))
+            if not new_id:
+                return self.js({"error": "分支失败"}, 500)
+            return self.js({"id": new_id, "session": STORE.get(new_id)})
+
+        m = re.match(r"^/api/sessions/([^/]+)/compact$", p)
+        if m:
+            sid = m.group(1)
+            if not STORE or not STORE.get(sid):
+                return self.js({"error": "not found"}, 404)
+            keep = body.get("keep")
+            r = STORE.compact(sid, keep=keep, force=True)
+            if not r:
+                return self.js({"ok": False, "hint": "消息太少，暂时不用压缩"}, 200)
+            r["ok"] = True
+            return self.js(r)
+
+        if p == "/api/cleanup":
+            if not STORE:
+                return self.js({"error": "db disabled"}, 400)
+            days = int(body.get("days") or 30)
+            dry = bool(body.get("dry"))
+            return self.js(STORE.cleanup(days=days,
+                                         drop_empty=body.get("empty", True),
+                                         vacuum=not dry,
+                                         dry=dry))
 
         m = re.match(r"^/api/sessions/([^/]+)/stop$", p)
         if m:
@@ -992,6 +1405,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_PATCH(self):
         u = urlparse(self.path)
+        if not self.authed():
+            return self.auth_fail()
         m = re.match(r"^/api/sessions/([^/]+)$", u.path)
         if not m:
             return self._send(404, "text/plain", "not found")
@@ -1008,12 +1423,18 @@ class Handler(BaseHTTPRequestHandler):
             kw["pinned"] = 1 if b["pinned"] else 0
         if "archived" in b:
             kw["archived"] = 1 if b["archived"] else 0
+        if "model" in b:
+            mdl = (b.get("model") or "").strip()[:40]
+            if mdl:
+                kw["model"] = mdl
         kw["updated_at"] = now()
         STORE.update(sid, **kw)
         return self.js({"ok": True, "session": STORE.get(sid)})
 
     def do_DELETE(self):
         u = urlparse(self.path)
+        if not self.authed():
+            return self.auth_fail()
         m = re.match(r"^/api/sessions/([^/]+)$", u.path)
         if not m:
             return self._send(404, "text/plain", "not found")
@@ -1108,13 +1529,27 @@ curl -fL -o static/$f "$BASE/static/$f"; done</code></p>
 STORE = None
 
 
+def local_ip():
+    """局域网 IP，用来打印手机能直接打开的地址。取不到就返回空。"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:
+        return ""
+    finally:
+        s.close()
+
+
 def main():
-    global MOCK, PORT, WORK, SYSTEM, STORE, USE_DB
+    global MOCK, PORT, WORK, SYSTEM, STORE, USE_DB, TOKEN
     ap = argparse.ArgumentParser(description="agent 图形界面")
     ap.add_argument("--port", type=int, default=PORT)
-    ap.add_argument("--host", default=HOST, help="默认 127.0.0.1，改成 0.0.0.0 会暴露到局域网")
+    ap.add_argument("--host", default=HOST,
+                    help="默认 127.0.0.1；改成 0.0.0.0 会暴露到局域网，并自动启用访问口令")
     ap.add_argument("--mock", action="store_true", help="不需要 API key，演示界面")
     ap.add_argument("--no-db", action="store_true", help="不落盘，单会话内存模式")
+    ap.add_argument("--no-auth", action="store_true", help="关掉访问口令（0.0.0.0 时别用）")
     a = ap.parse_args()
 
     MOCK = a.mock
@@ -1157,10 +1592,11 @@ def main():
 
     srv = ThreadingHTTPServer((a.host, PORT), Handler)
     srv.daemon_threads = True
+    TOKEN = "" if a.no_auth else load_token(a.host)
     url = "http://127.0.0.1:%d" % PORT
     print("")
     print("  agent 界面已启动")
-    print("  %s" % url)
+    print("  %s%s" % (url, ("/?k=" + TOKEN) if TOKEN else ""))
     print("  工作目录 %s" % WORK)
     print("  模式 %s" % ("MOCK 演示" if MOCK else MODEL))
     if USE_DB:
@@ -1169,7 +1605,16 @@ def main():
     else:
         print("  会话库 未启用（--no-db）")
     if a.host not in ("127.0.0.1", "localhost"):
+        ip = local_ip()
         print("  监听 %s:%d（所有网卡，端口映射能进来了）" % (a.host, PORT))
+        if ip:
+            print("  手机/别的设备打开（第一次要用这个完整地址）：")
+            print("     http://%s:%d/%s" % (ip, PORT, ("?k=" + TOKEN) if TOKEN else ""))
+    if TOKEN:
+        print("  访问口令 %s" % TOKEN)
+        print("  口令来源 WEBCHAT_TOKEN 或 ~/.config/webchat/token（改完重启生效）")
+    else:
+        print("  访问口令 未启用（只监听本机，无需口令）")
     if ENV_FILE:
         print("  配置 %s" % ENV_FILE)
     print("  Ctrl+C 停止")
