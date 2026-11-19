@@ -78,9 +78,9 @@ fetch() {  # $1=文件名  $2=落地路径
             wget -q -O "$_dst" --timeout=20 --tries=2 "$_b/$_name" 2>/dev/null
         fi
         if [ -s "$_dst" ]; then
-            MIRROR=$(printf '%s' "$_b" | sed 's#https\?://##; s#/.*##')
             return 0
-        fi    done
+        fi
+    done
     rm -f "$_dst"
     return 1
 }
