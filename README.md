@@ -51,6 +51,21 @@ python3 webchat.py --port 8080
 > **单条消息最多跑 100 步**（模型 → 工具 → 模型 算一步）。到上限会明确提示，回一句「继续」接着跑；
 > 想调大用环境变量 `AGENT_MAX_TURNS=300 python3 webchat.py`，不用改代码。
 
+`export` 只对当前会话有效，重启就没了。想一劳永逸，把配置写进文件：
+
+```bash
+mkdir -p ~/.config/webchat
+cat > ~/.config/webchat/env <<'EOF'
+DEEPSEEK_KEY=sk-xxx
+AGENT_WORK=/root/work-kit
+HOST=0.0.0.0
+EOF
+chmod 600 ~/.config/webchat/env
+```
+
+`webchat.py` 启动时自动读取（环境变量优先级更高）。文件里可写 `DEEPSEEK_KEY` / `AGENT_WORK` /
+`HOST` / `PORT` / `AGENT_MAX_TURNS`；启动信息会显示 `配置 ~/.config/webchat/env` 确认读到了。
+
 > 完整流程（Termux 环境、API 配置、ADB 无线调试配对、中文输入、保活、开机自启、断线补救）见手册，
 > 里面每一步都有预期输出和失败对照表。**建议先读手册再动手**，尤其是 ADB 那一节。
 >
