@@ -9,7 +9,7 @@ OCR 依赖系统的 Tesseract（`pkg install tesseract`），Pillow 可选。
 
 | 文件 | 干什么 | 跑在哪 |
 |---|---|---|
-| `webchat.py` | 浏览器聊天界面：多会话、跨重启记忆、三栏布局、运行详情 | 手机 / 虚拟机 |
+| `webchat.py` | 浏览器聊天界面：多会话、跨重启记忆、三栏布局、运行详情、换模型、压缩、分支、清理 | 手机 / 虚拟机 |
 | `static/` | 界面本体（`app.html` / `app.css` / `app.js`），`webchat.py` 启动时读取 | 手机 / 虚拟机 |
 | `rev.py` | 逆向侦察：ELF / PE / DEX / APK 结构、字符串、熵、carve | 手机 / 虚拟机 |
 | `adui.py` | 安卓控屏：adb + uiautomator，看屏幕、点按钮、输中文、截屏 OCR | 手机 |
@@ -61,6 +61,28 @@ python3 webchat.py --port 8080
 每条回复下面有步数 / 耗时 / token，右栏能看到上下文占用和工具时间线。
 手机上侧栏收成抽屉（左上角 ☰），运行详情是底部弹层（顶部图表按钮）。
 
+### v2.1 加了什么
+
+| 能力 | 怎么用 |
+|---|---|
+| **换模型** | 点顶部的模型名（手机上点输入框左下角的模型），会列出 `WEBCHAT_MODELS` 里的模型；选中后写进这个会话，下一轮生效 |
+| **重新生成** | 悬停最后一条回复 → ↻。会砍掉最后一轮再重跑，不是追加 |
+| **分支** | 悬停任意回复 → ⑂。从这条回复分叉出一个新会话，原会话不动，适合「换个思路再问一遍」 |
+| **上下文压缩** | 估算 token 超过 `AGENT_CTX_LIMIT`（默认 48000）时自动把老消息揉成摘要，界面上有一条「上下文已压缩」的分隔线；右栏也能手动点「压缩上下文」。原始消息不删，往上翻还在 |
+| **库清理** | 左下角 🗑 → 看占用、预览、按天数删掉没动过的会话，顺手 `VACUUM` 收空间。置顶的不会删 |
+| **访问口令** | `--host 0.0.0.0` 时自动生成，存在 `~/.config/webchat/token`，启动会打印带 `?k=` 的完整地址；打开一次浏览器就记住。`--no-auth` 可关 |
+
+```bash
+# 想加自己的模型（逗号分隔）
+WEBCHAT_MODELS="deepseek-chat,deepseek-reasoner" python3 webchat.py
+
+# 压缩阈值调小一点，长会话更省 token
+AGENT_CTX_LIMIT=24000 AGENT_CTX_KEEP=8 python3 webchat.py
+```
+
+> `deepseek-reasoner` 对 function calling 的支持随版本变化，纯问答没问题；要它跑工具（看屏幕、改文件）
+> 建议留在 `deepseek-chat`，否则可能收到「模型不支持 tools」的报错。
+
 > **单条消息最多跑 100 步**（模型 → 工具 → 模型 算一步）。到上限会明确提示，回一句「继续」接着跑；
 > 想调大用环境变量 `AGENT_MAX_TURNS=300 python3 webchat.py`，不用改代码。
 
@@ -77,7 +99,8 @@ chmod 600 ~/.config/webchat/env
 ```
 
 `webchat.py` 启动时自动读取（环境变量优先级更高）。文件里可写 `DEEPSEEK_KEY` / `AGENT_WORK` /
-`HOST` / `PORT` / `AGENT_MAX_TURNS`；启动信息会显示 `配置 ~/.config/webchat/env` 确认读到了。
+`HOST` / `PORT` / `AGENT_MAX_TURNS` / `WEBCHAT_MODELS` / `AGENT_CTX_LIMIT` / `WEBCHAT_TOKEN`；
+启动信息会显示 `配置 ~/.config/webchat/env` 确认读到了。
 
 > 完整流程（Termux 环境、API 配置、ADB 无线调试配对、中文输入、保活、开机自启、断线补救）见手册，
 > 里面每一步都有预期输出和失败对照表。**建议先读手册再动手**，尤其是 ADB 那一节。
@@ -136,9 +159,11 @@ python3 adui.py ocr                              # 截屏 + 识别 + 给出可�
 这些脚本的能力是「替你操作机器」，风险也是真的：
 
 - `adui.py` 拥有 adb shell 权限，能点任何按钮、读任何界面 —— 包括支付确认页。
-- `webchat.py --host 0.0.0.0` 会把命令执行权开给同一网段的任何设备。
-- 会话库 `sessions.db` 等于一份「你在这台机器上干过的所有事」的记录，**默认没有密码**。
-  暴露到局域网前想清楚；至少把 `HOST` 留在 `127.0.0.1`。
+- `webchat.py --host 0.0.0.0` 会把命令执行权开给同一网段的设备。v2.1 起这种情况会自动启用访问口令
+  （`~/.config/webchat/token`，启动时打印带 `?k=` 的地址），但口令只是防误闯，**不是加密**：
+  流量仍是明文 HTTP。真要暴露到公网，请套一层 HTTPS 反代。
+- 会话库 `sessions.db` 等于一份「你在这台机器上干过的所有事」的记录，口令只挡 HTTP 入口，
+  拿到文件的人照样能读。别把它同步到公开网盘。
 - `termux-setup-storage` 会把整个 `/sdcard` 暴露给脚本。
 - 不要把 `OPENAI_API_KEY` 提交进仓库，也不要贴到聊天里。
 
