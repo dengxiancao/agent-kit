@@ -75,7 +75,7 @@ BASE=https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
 | 文件 | 字节数 | 干什么 | 装在哪 |
 |---|---|---|---|
 | `rev.py` | 28616 | 逆向侦察 | 手机 + 虚拟机 |
-| `webchat.py` | 36973 | 浏览器聊天界面 | 手机 + 虚拟机 |
+| `webchat.py` | 38944 | 浏览器聊天界面 | 手机 + 虚拟机 |
 | `adui.py` | 47304 | 安卓控屏（含 doctor、ocr） | 手机 |
 | `ocr.py` | 33777 | 本地 OCR（图片/PDF → 文字+坐标） | 手机 + 虚拟机 |
 | `ui.py` | 16329 | Linux 桌面控屏 | 虚拟机 |
@@ -432,6 +432,32 @@ python3 patch_ui.py
 
 **工具卡片是核心。** agent 每执行一次命令就弹一张卡，它真正做到什么，看卡片，不要只看它的自述。
 
+**key 别每次 export。** `export` 只活在当前终端会话里，虚拟机一重启就是全新的 shell，变量自然没了 —— 于是每次都得重来一遍，看起来像「key 失效了」。写进配置文件就一劳永逸：
+
+```
+mkdir -p ~/.config/webchat
+cat > ~/.config/webchat/env <<'EOF'
+DEEPSEEK_KEY=sk-你的key
+AGENT_WORK=/root/work-kit
+HOST=0.0.0.0
+EOF
+chmod 600 ~/.config/webchat/env
+```
+
+之后 `python3 webchat.py` 直接启动，不用任何 export。启动信息里会多一行 `配置 ~/.config/webchat/env`，用来确认读到了。
+
+| 文件里的键 | 作用 |
+|---|---|
+| `DEEPSEEK_KEY` | API key |
+| `AGENT_WORK` | agent 的工作目录，默认 `~/work`；脚本放在 `work-kit` 就填那 |
+| `HOST` | `0.0.0.0` 才允许端口映射 / 局域网访问，默认 `127.0.0.1` |
+| `PORT` | 端口，默认 8765 |
+| `AGENT_MAX_TURNS` | 单条消息最多几步，默认 100 |
+
+环境变量优先级高于文件 —— 临时换 key 或端口直接 `DEEPSEEK_KEY=sk-xxx python3 webchat.py` 覆盖，不用改文件。
+
+文件里是明文 key，权限务必 600，也别放进仓库目录 —— `git add .` 会把它带上。
+
 
 ### 4.2 逆向分析（rev.py）
 
@@ -704,6 +730,7 @@ python3 ~/work/ocr.py shot.png      # 自动用 ~/.tessdata
 | `ui.py` 认不出小字 | OCR 对 12~14px 字不灵 | `ui.py region x1 y1 x2 y2` 放大识别 |
 | `rev.py` 报 Permission denied | 文件在被保护目录 | `cp` 到 `~/work` 再分析 |
 | `write_file → path escapes work dir` | 路径护栏拦住了越界写入 | 改用 `run_shell` 配合 `tee` 写 |
+| 重启后提示「缺少 DEEPSEEK_KEY」 | `export` 只对当前会话有效，重启就没了 | 写进 `~/.config/webchat/env`（见 4.1） |
 | agent 跑十几步就停，像卡死 | 旧版 `MAX_TURNS` 默认 12，且撞上限不提示 | 换新版（默认 100，会提示）；更久用 `AGENT_MAX_TURNS=300` |
 | OCR 一个字都认不出 | tesseract 或中文包没装 | `python3 ocr.py doctor` |
 | OCR 整段文字消失 | 彩色背景被当成图片区域 | 已自动处理；仍丢就换 best 模型 |
