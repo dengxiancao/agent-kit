@@ -388,10 +388,24 @@
     $('.body', box).appendChild(el);
   }
 
-  function addErr(text) {
+  function addErr(text, canRetry) {
     var d = document.createElement('div');
     d.className = 'errbox';
-    d.textContent = text;
+    var p = document.createElement('div');
+    p.className = 'errmsg';
+    p.textContent = text;
+    d.appendChild(p);
+    if (canRetry && S.sid) {
+      var b = document.createElement('button');
+      b.className = 'errretry';
+      b.textContent = '重试这一轮';
+      b.onclick = function () {
+        if (S.running || S.busy) return;
+        d.remove();
+        regenerate(true);
+      };
+      d.appendChild(b);
+    }
     feed.appendChild(d);
     scroll(true);
   }
@@ -807,7 +821,7 @@
         S.tokenUsed = (ev.in || 0) + (ev.out || 0);
         break;
       case 'error':
-        addErr(ev.v);
+        addErr(ev.v, ev.retryable);
         break;
       case 'done':
         if (A && A.raf) { cancelAnimationFrame(A.raf); A.raf = null; }
@@ -997,9 +1011,9 @@
     }
   }
 
-  async function regenerate() {
+  async function regenerate(skipConfirm) {
     if (!S.sid || S.running || S.busy) return;
-    if (!confirm('重新生成最后一轮？这一轮的回复会被替换掉。')) return;
+    if (!skipConfirm && !confirm('重新生成最后一轮？这一轮的回复会被替换掉。')) return;
     var sid = S.sid;
     S.busy = true; S.running = true;
     try {
