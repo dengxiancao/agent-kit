@@ -953,6 +953,67 @@ def make_title(text):
     return (t[:24] + "…") if len(t) > 24 else (t or "新对话")
 
 
+def is_net_err(s):
+    """判断异常是不是「网络抽了一下」，只有这种才值得自动重试。"""
+    low = (s or "").lower()
+    for k in ("urlerror", "errno -3", "errno -2", "eai_again", "econnreset",
+              "connection reset", "connection aborted", "remote end closed",
+              "temporarily unavailable", "http 429", "http 500", "http 502",
+              "http 503", "http 504", "timed out", "timeout"):
+        if k in low:
+            return True
+    return False
+
+
+def human_err(e):
+    """把 Python 异常翻成用户能照做的一句话。返回 (文案, 是否值得重试)。"""
+    raw = "%s: %s" % (type(e).__name__, e)
+    low = raw.lower()
+    host = urlparse(API_URL).netloc or API_URL
+    if "errno -3" in low or "eai_again" in low:
+        return ("连不上模型接口：域名解析失败（DNS 没响应）。\n"
+                "多半是这台机器的网络断了，或者 /etc/resolv.conf 被改坏。\n"
+                "先在终端手动跑：ping -c1 223.5.5.5；再跑 getent hosts %s" % host), True
+    if "errno -2" in low or "name or service not known" in low:
+        return ("连不上模型接口：解析不到域名 %s。\n"
+                "检查这台机器能不能上网（ping -c1 223.5.5.5），以及 /etc/resolv.conf 里有没有 nameserver。" % host), True
+    if "errno 111" in low or "connection refused" in low:
+        return ("连不上模型接口：%s 拒绝连接。\n"
+                "检查 DEEPSEEK_URL 是不是写错了，或者本地代理/网关没起来。" % host), False
+    if "http 401" in low:
+        return ("模型接口返回 401：API key 无效或已过期。\n"
+                "在 ~/.config/webchat/env 里换掉 DEEPSEEK_KEY，重启 webchat.py。"), False
+    if "http 402" in low or "insufficient balance" in low:
+        return "模型接口返回 402：账户余额不足。充值后再试。", False
+    if "http 429" in low:
+        return "模型接口返回 429：请求太频繁，等十几秒再试。", True
+    if any(h in low for h in ("http 500", "http 502", "http 503", "http 504")):
+        return "模型服务端出错（5xx），通常几分钟内自己恢复，可以重试。", True
+    if "timed out" in low or "timeout" in low:
+        return "模型接口 5 分钟没返回，已放弃。可能是网络太慢或服务端卡住。", True
+    return raw, False
+
+
+def stream_retry(msgs, model, stop_ev, tries=3):
+    """调模型；网络抖动自动重试。已经吐过字就不重试，免得前端出现重复内容。"""
+    last = None
+    for i in range(tries):
+        got = False
+        try:
+            for d in (mock_chat(msgs) if MOCK else stream_chat(msgs, model)):
+                got = True
+                yield d
+            return
+        except RuntimeError as e:
+            last = e
+            if got or stop_ev.is_set() or not is_net_err(str(e)):
+                raise
+            time.sleep(1.2 * (i + 1))
+        except Exception as e:
+            raise RuntimeError("%s: %s" % (type(e).__name__, e))
+    raise last or RuntimeError("接口连续失败")
+
+
 def run_agent(sid, user_text, bus, stop_ev):
     """跑一轮：把每条消息写库，把每个事件发到 bus。客户端断开也不影响它跑完。"""
     emit = bus.pub
@@ -999,7 +1060,7 @@ def run_agent(sid, user_text, bus, stop_ev):
               "after": r["after"], "kept": r["kept"]})
 
     def gen(m):
-        return mock_chat(m) if MOCK else stream_chat(m, model)
+        return stream_retry(m, model, stop_ev)
 
     shrink()
 
@@ -1130,12 +1191,13 @@ def start_run(sid, text):
         try:
             run_agent(sid, text, bus, stop_ev)
         except Exception as e:
-            bus.pub({"t": "error", "v": "%s: %s" % (type(e).__name__, e)})
+            msg, retryable = human_err(e)
+            with RUN_LOCK:
+                RUNNING.pop(sid, None)
+            bus.pub({"t": "error", "v": msg, "retryable": retryable})
             bus.pub({"t": "done", "steps": 0, "turns": 0, "ms": 0,
                      "hit_limit": False, "stopped": False,
                      "tokens": {"in": 0, "out": 0}})
-            with RUN_LOCK:
-                RUNNING.pop(sid, None)
 
     t = threading.Thread(target=target, daemon=True)
     t.start()
@@ -1150,7 +1212,7 @@ MIME = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "webchat/2.1"
+    server_version = "webchat/2.2"
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
@@ -1300,7 +1362,7 @@ class Handler(BaseHTTPRequestHandler):
                             "work": WORK, "db": DB_PATH if USE_DB else None,
                             "db_size": STORE.size() if STORE else 0,
                             "max_turns": MAX_TURNS, "ctx_limit": CTX_LIMIT,
-                            "ctx_keep": CTX_KEEP, "auth": bool(TOKEN), "version": "2.1"})
+                            "ctx_keep": CTX_KEEP, "auth": bool(TOKEN), "version": "2.2"})
 
         if p == "/api/models":
             return self.js({"models": MODELS, "default": MODEL})
