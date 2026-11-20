@@ -225,6 +225,11 @@ button{font-family:inherit}
 @media (prefers-color-scheme:dark){.warnbox{background:#241e10;border-color:#4a3c16;color:#e0bb63}}
 .errbox{border:1px solid var(--err);background:var(--err-soft);color:var(--err);border-radius:10px;
   padding:9px 11px;font-size:13px;margin:0 0 14px;white-space:pre-wrap;word-break:break-word}
+.errbox .errmsg{line-height:1.68}
+.errretry{margin-top:9px;display:inline-block;height:27px;padding:0 11px;border-radius:7px;
+  border:1px solid currentColor;background:transparent;color:inherit;font:inherit;
+  font-size:12px;cursor:pointer;opacity:.85;transition:opacity .12s,background .12s}
+.errretry:hover{opacity:1;background:rgba(255,255,255,.32)}
 .interrupted{display:flex;align-items:center;gap:7px;border:1px dashed var(--line);color:var(--muted);
   border-radius:9px;padding:7px 10px;font-size:12px;margin:0 0 12px}
 
