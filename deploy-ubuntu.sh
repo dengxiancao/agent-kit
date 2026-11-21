@@ -150,11 +150,10 @@ ExecStart=/usr/bin/python3 $APP_DIR/webchat.py
 Restart=on-failure
 RestartSec=3
 
-# 沙箱：模型就算执行 rm -rf /，也只能动工作目录
+# 沙箱：系统目录只读，模型最多改家目录和工作目录
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=read-only
 ReadWritePaths=$WORK_DIR $DATA_DIR
 
 [Install]
