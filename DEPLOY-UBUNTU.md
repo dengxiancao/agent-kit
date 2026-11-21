@@ -338,6 +338,36 @@ adb connect 手机IP:5555
 
 这条不看 WiFi 状态。但小米 10S 得先解 BL 锁才能 root，为这个去解不值当。
 
+### 9.4 手机自己连自己（Termux 控制本机，不需要 WiFi）
+
+想让手机上的 Termux / proot 里的 agent 控制本机屏幕，可以走本地回环。但**要先借一次电脑**，把 adbd 拉到 TCP 上：
+
+```bash
+# 电脑上，USB 连着手机
+adb devices            # 先确认能看到手机并已授权
+adb tcpip 5555         # 让手机里的 adbd 开始监听 TCP
+# 拔掉 USB
+```
+
+手机上（Termux 或 proot）：
+
+```bash
+pkg install android-tools        # proot 里用 apt install adb
+adb connect 127.0.0.1:5555
+adb devices                      # 应出现 127.0.0.1:5555  device
+adb shell input keyevent 3       # 能回桌面就通了
+```
+
+为什么这样能行：`adb tcpip` 是让**手机里的 adbd** 监听 5555，跟 WiFi 无关，监听地址是 `0.0.0.0`，所以回环也通。那个灰掉的「无线调试」开关干的其实是同一件事，只是它非要先连上 WLAN 才肯做。
+
+限制：
+
+- 手机重启后失效，得重新插一次线跑 `adb tcpip 5555`
+- 端口开着时同网段设备也能尝试连（仍需你点授权），不用了发 `adb usb` 切回 USB 模式
+- MIUI 上 `input tap` 要生效，仍需打开「USB 调试（安全设置）」
+
+**开热点为什么不管用**：Android 11 起，热点不算「已连接 WLAN」，无线调试照样是灰的。热点只在配合 `adb tcpip` 时有用——给电脑一个能路由到手机的网段。
+
 ---
 
 ## 附：这套东西在 Ubuntu 上和手机上有什么不一样
