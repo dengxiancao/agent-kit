@@ -381,3 +381,24 @@ adb shell input keyevent 3       # 能回桌面就通了
 | 常驻 | `nohup` / Termux:Boot | systemd，更省心 |
 
 `adui.py` 在 Ubuntu 上要连真机的话，装 `adb` 并 `adb connect` 即可，但它的路径假设是 Termux 的，不一定开箱能用——这部分按需再折腾。
+
+### 觉得"能力不如手机上"时先看这里
+
+v2.3 之前，提示词是写死给 Termux 的，模型在 Ubuntu 上会一直以为自己在手机上，去调 `adui.py`、`ui look` 这些这儿根本没有的东西，撞墙之后反复重试，最后耗到步数上限——看起来就是"什么都干不了"。
+
+v2.3 起会自动识别环境，服务器上换成 Linux 版提示词，并且：
+
+| 限制 | 默认值 | 怎么调 |
+|---|---|---|
+| 单条命令超时 | 120 秒 | `AGENT_CMD_TIMEOUT=300` 写进 `/etc/agent-kit.env` |
+| 连续失败熔断 | 4 次 | `AGENT_FAIL_LIMIT=8`，或设 0 关掉 |
+| 可写的目录 | `/home/agent/work`、`/var/lib/agent-kit` | `systemctl edit agent-kit` 里加 `ReadWritePaths=/你的/目录` |
+| 文件工具的可视范围 | `AGENT_WORK` 之内 | 改 `/etc/agent-kit.env` 的 `AGENT_WORK` |
+
+判断"是不是被沙箱挡了"很简单，看报错：
+
+- `路径越界，只能访问工作目录` → 代码层的 `safe()`，改 `AGENT_WORK`
+- `Permission denied` / `Read-only file system` → systemd 的 `ProtectSystem`，改 `ReadWritePaths`
+- `超过 120 秒没返回` → 命令本身太慢，拆小或 `nohup` 放后台
+
+改完都要 `sudo systemctl restart agent-kit`。
