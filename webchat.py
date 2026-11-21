@@ -79,6 +79,29 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
 
 WORK = os.path.abspath(os.path.expanduser(os.environ.get("AGENT_WORK", "~/work")))
+
+# 跑在手机上还是服务器上，决定了提示词、工具集和超时。以前这里写死成 Termux，
+# 搬到 Ubuntu 后模型一直以为自己在手机上，还去调 adui.py / ui.py 这些不存在的脚本。
+IS_ANDROID = bool(os.environ.get("TERMUX_VERSION")
+                  or "com.termux" in sys.executable
+                  or os.path.exists("/system/build.prop"))
+# 手机上 45 秒够用（apt/pkg 都慢且不该跑），服务器上装包、编译动辄几分钟，给 120 秒。
+CMD_TIMEOUT = int(os.environ.get("AGENT_CMD_TIMEOUT", "45" if IS_ANDROID else "120"))
+# 连续几次工具失败就熔断。之前是硬耗到 100 步上限，界面上看就是"卡住乱试"。
+FAIL_STREAK_LIMIT = int(os.environ.get("AGENT_FAIL_LIMIT", "4"))
+
+
+def os_name():
+    try:
+        with open("/etc/os-release", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("PRETTY_NAME="):
+                    return line.split("=", 1)[1].strip().strip('"')
+    except Exception:
+        pass
+    return sys.platform
+
+
 API_KEY = os.environ.get("DEEPSEEK_KEY", "")
 API_URL = os.environ.get("DEEPSEEK_URL", "https://api.deepseek.com/chat/completions")
 MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
@@ -740,9 +763,23 @@ def rev_path():
 def handle(name, a):
     try:
         if name == "run_shell":
-            p = subprocess.run(a["cmd"], shell=True, cwd=WORK, capture_output=True,
-                               text=True, timeout=45)
-            return ((p.stdout or "") + (p.stderr or ""))[-4000:] or "(无输出)"
+            # stdin 必须断开。命令一旦去读标准输入（git、ssh、某些 grep），
+            # 就会一直等到超时——表现就是"连 ls 都超时"。
+            try:
+                p = subprocess.run(a["cmd"], shell=True, cwd=WORK, capture_output=True,
+                                   text=True, timeout=CMD_TIMEOUT,
+                                   stdin=subprocess.DEVNULL)
+            except subprocess.TimeoutExpired as e:
+                part = e.stdout or ""
+                if isinstance(part, bytes):
+                    part = part.decode("utf-8", "replace")
+                return ("ERROR: 超过 %d 秒没返回，已终止。\n已产生的输出：\n%s\n"
+                        "换个做法：拆成几条短命令；或用 nohup 放后台再 tail 日志。"
+                        % (CMD_TIMEOUT, part[-1500:] or "(无)"))
+            out = (p.stdout or "") + (p.stderr or "")
+            if p.returncode:
+                out = "[退出码 %d]\n%s" % (p.returncode, out)
+            return out[-4000:] or "(无输出)"
         if name == "list_dir":
             fp = safe(a.get("path", "."))
             rows = []
@@ -839,26 +876,70 @@ TOOLS = [
 ]
 
 
+def visible_tools():
+    """只把当前环境真能用的工具交给模型。
+
+    手机版才需要 ui（X11 桌面）和 rev（APK/ELF 侦察）；搬到服务器后这两个脚本
+    不一定在，模型却会照着提示词去调，白浪费步数。存在才暴露。
+    """
+    names = {"run_shell", "list_dir", "read_file", "write_file"}
+    # ui 要真的能碰到图形会话才给，服务器上没有 DISPLAY，调了只会报错白耗步数。
+    if ui_path() and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        names.add("ui")
+    if rev_path():
+        names.add("rev")
+    return [t for t in TOOLS if t["function"]["name"] in names]
+
+
+TOOL_SET = visible_tools()
+
+
 def build_system(work):
+    if IS_ANDROID:
+        return (
+            "你是运行在用户手机 Termux 里的本地助手。\n\n"
+            "工作目录：%s\n"
+            "所有文件路径都相对于它，越界会被拒绝。\n\n"
+            "规则：\n"
+            "- 直接用中文回答，简洁，不写客套话。\n"
+            "- 需要看文件就先 list_dir / read_file，不要猜。\n"
+            "- 分析 APK / .so / 二进制时用 rev 工具，不要 cat 二进制。\n"
+            "- 一次只做一件事，做完再说结论。\n"
+            "- 命令有 %d 秒超时、输出截断 4000 字符，避免长任务。\n"
+            "- 操作图形界面时：ui look 看屏幕 → ui find/click 操作 → 再 ui look 确认。\n"
+            "- 操作安卓手机屏幕用：python3 adui.py look / tap-text 文字 / tap 序号 / key back / text 内容。\n"
+            "- adui look 看不到内容（游戏、Flutter 自绘界面、图片里的文字）时，用 "
+            "python3 adui.py ocr 截图识别，它直接给出「文字 (x,y)」。\n"
+            "- 识别图片或 PDF：python3 ocr.py 文件；要坐标加 --boxes；小字先用 --crop x1,y1,x2,y2 截那一块。\n"
+            "- 往手机输入框打中文用 python3 adui.py text \"内容\"；若提示未配好，先执行一次 "
+            "python3 adui.py ime-install。不要用 termux-clipboard-set，它会挂住。\n"
+            "- 每步只做一个动作，失败就换思路，不要连续盲点。\n" % (work, CMD_TIMEOUT)
+        )
+
+    try:
+        uid = os.getuid()
+    except Exception:
+        uid = -1
     return (
-        "你是运行在用户手机 Termux 里的本地助手。\n\n"
-        "工作目录：%s\n"
-        "所有文件路径都相对于它，越界会被拒绝。\n\n"
+        "你是运行在 Linux 服务器上的本地助手。\n\n"
+        "系统：%s，Python %s，当前 uid=%d（%s）\n"
+        "工作目录：%s —— shell 命令都在这里执行，相对路径基于它。\n"
+        "read_file / write_file / list_dir 三个文件工具被限制在工作目录内，越界会被拒绝；"
+        "run_shell 不受此限制，但仍受系统权限约束。\n\n"
         "规则：\n"
         "- 直接用中文回答，简洁，不写客套话。\n"
-        "- 需要看文件就先 list_dir / read_file，不要猜。\n"
-        "- 分析 APK / .so / 二进制时用 rev 工具，不要 cat 二进制。\n"
-        "- 一次只做一件事，做完再说结论。\n"
-        "- 命令有 45 秒超时、输出截断 4000 字符，避免长任务。\n"
-        "- 操作图形界面时：ui look 看屏幕 → ui find/click 操作 → 再 ui look 确认。\n"
-        "- 操作安卓手机屏幕用：python3 adui.py look / tap-text 文字 / tap 序号 / key back / text 内容。\n"
-        "- adui look 看不到内容（游戏、Flutter 自绘界面、图片里的文字）时，用 "
-        "python3 adui.py ocr 截图识别，它直接给出「文字 (x,y)」。\n"
-        "- 识别图片或 PDF：python3 ocr.py 文件；要坐标加 --boxes；小字先用 --crop x1,y1,x2,y2 截那一块。\n"
-        "- 往手机输入框打中文用 python3 adui.py text \"内容\"；若提示未配好，先执行一次 "
-        "python3 adui.py ime-install。不要用 termux-clipboard-set，它会挂住。\n"
-        "- 每步只做一个动作，失败就换思路，不要连续盲点。\n" % work
-    )
+        "- 先看再改：用 ls / cat / grep / systemctl status 确认现状，再动手，不要凭猜测敲命令。\n"
+        "- 一次只做一件事，做完说结论。\n"
+        "- 命令超时 %d 秒，输出截断 4000 字符。apt install、编译、大文件下载这类长任务，"
+        "用 nohup ... > /tmp/x.log 2>&1 & 放后台，再 sleep + tail 日志轮询。\n"
+        "- 绝对不要执行需要交互输入的命令（nano、vi、passwd、ssh 首次连接、apt 的 y/n 确认）。"
+        "改用非交互写法：sed -i、tee、apt-get install -y、ssh -o StrictHostKeyChecking=no。\n"
+        "- 改系统配置前先备份：cp 文件 文件.bak。\n"
+        "- 同一条命令连续失败两次就停下来，把报错原文告诉用户，不要换个写法反复试。\n"
+        "- 不要操作网络和挂载（ip、iptables、umount、mount -o bind），这类操作会把机器自己的网络弄断。\n"
+    ) % (os_name(), sys.version.split()[0], uid,
+         "root，权限很大，破坏性命令要格外小心" if uid == 0 else "普通用户",
+         work, CMD_TIMEOUT)
 
 
 SYSTEM = build_system(WORK)
@@ -867,7 +948,7 @@ SYSTEM = build_system(WORK)
 # ------------------------------------------------------------------ 模型调用
 
 def stream_chat(msgs, model=None):
-    body = json.dumps({"model": model or MODEL, "messages": msgs, "tools": TOOLS,
+    body = json.dumps({"model": model or MODEL, "messages": msgs, "tools": TOOL_SET,
                        "tool_choice": "auto", "stream": True,
                        "stream_options": {"include_usage": True},
                        "temperature": 0.3}, ensure_ascii=False).encode("utf-8")
@@ -918,7 +999,6 @@ def mock_chat(msgs):
         text = ("目录如下。给它做点事的话，直接说就行：\n\n"
                 "| 文件 | 说明 |\n|---|---|\n"
                 "| `rev.py` | 逆向侦察工具 |\n"
-                "| `adui.py` | 安卓控屏 |\n"
                 "| `ocr.py` | 本地 OCR |\n\n"
                 "比如：\n\n```sh\npython3 rev.py apk downloads/wechat.apk\n```\n\n"
                 "要我直接跑吗？")
@@ -1064,6 +1144,8 @@ def run_agent(sid, user_text, bus, stop_ev):
 
     shrink()
 
+    fail_streak = 0
+    halted = False
     for turn in range(MAX_TURNS):
         if stop_ev.is_set():
             break
@@ -1139,19 +1221,29 @@ def run_agent(sid, user_text, bus, stop_ev):
             t0 = time.time()
             out = handle(fn["name"], args)
             ms = int((time.time() - t0) * 1000)
-            ok = not out.startswith("ERROR:")
+            ok = not (out.startswith("ERROR:") or out.startswith("[退出码"))
             steps += 1
             emit({"t": "tool_end", "id": tc["id"], "out": out[:3500], "ms": ms, "ok": ok})
             msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": out})
+            fail_streak = 0 if ok else fail_streak + 1
             if STORE:
                 STORE.add(sid, "tool", content=out, tool_call_id=tc["id"],
                           name=fn["name"], meta={"ms": ms, "ok": ok})
                 STORE.bump(sid, steps=1)
+            if FAIL_STREAK_LIMIT > 0 and fail_streak >= FAIL_STREAK_LIMIT:
+                # 一直失败还接着试，只会把步数耗光。停下来，把最后的报错留给用户看。
+                emit({"t": "notice",
+                      "v": "连续 %d 次工具执行失败，已自动停止。最后一个报错见上。" % fail_streak})
+                halted = True
+                break
+
+        if halted:
+            break
 
         trim(msgs)
         shrink()
 
-    stopped = stop_ev.is_set()
+    stopped = stop_ev.is_set() or halted
     if not finished and not stopped:
         tip = ("（已连续执行 %d 步，到单次上限 %d 步就停了。任务没完的话，回一句「继续」接着跑；"
                "想一次跑更长：AGENT_MAX_TURNS=300 python3 webchat.py）" % (steps, MAX_TURNS))
@@ -1212,7 +1304,7 @@ MIME = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "webchat/2.2"
+    server_version = "webchat/2.3"
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
@@ -1362,7 +1454,10 @@ class Handler(BaseHTTPRequestHandler):
                             "work": WORK, "db": DB_PATH if USE_DB else None,
                             "db_size": STORE.size() if STORE else 0,
                             "max_turns": MAX_TURNS, "ctx_limit": CTX_LIMIT,
-                            "ctx_keep": CTX_KEEP, "auth": bool(TOKEN), "version": "2.2"})
+                            "ctx_keep": CTX_KEEP, "auth": bool(TOKEN), "version": "2.3",
+                            "platform": os_name(), "android": IS_ANDROID,
+                            "cmd_timeout": CMD_TIMEOUT,
+                            "tools": [t["function"]["name"] for t in TOOL_SET]})
 
         if p == "/api/models":
             return self.js({"models": MODELS, "default": MODEL})
