@@ -164,7 +164,23 @@ EOF
     ok "已注册 /etc/systemd/system/agent-kit.service（开机自启）"
 else
     step "没有 systemd，跳过服务注册"
-    warn "容器/WSL 里常见。手动前台跑："
+    if grep -qi microsoft /proc/version 2>/dev/null; then
+        warn "检测到 WSL：它默认不启动 systemd，所以没有 systemctl 命令"
+        cat <<'TIP'
+
+    想用 systemd（推荐，设置一次长期有效）：
+
+      sudo tee /etc/wsl.conf >/dev/null <<'EOF'
+[boot]
+systemd=true
+EOF
+
+      然后在 Windows 的 PowerShell 里执行：wsl --shutdown
+      重开 Kali/Ubuntu，再跑一次本脚本，服务就会注册好。
+
+TIP
+    fi
+    warn "临时前台跑（关掉窗口就停）："
     printf '    cd %s && set -a; . %s; set +a; python3 webchat.py\n' "$APP_DIR" "$ENV_FILE"
 fi
 
