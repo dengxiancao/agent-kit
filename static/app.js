@@ -426,6 +426,15 @@
     scroll();
   }
 
+  // 熔断提示：连续失败后自动停下，需要比普通分隔更醒目
+  function addNotice(text) {
+    var d = document.createElement('div');
+    d.className = 'notice';
+    d.textContent = text;
+    feed.appendChild(d);
+    scroll(true);
+  }
+
   /* ---------------- 会话列表 ---------------- */
 
   function renderSessions() {
@@ -724,8 +733,10 @@
 
     html += '<div class="card"><div class="ch">环境</div>' +
       '<div class="kv"><span>模型</span><b>' + esc(st.model || '') + '</b></div>' +
+      '<div class="kv"><span>平台</span><b>' + esc(S.health.platform || (S.health.android ? 'Android' : 'Linux')) + '</b></div>' +
       '<div class="kv"><span>单轮上限</span><b>' + (S.health.max_turns || 100) + ' 步</b></div>' +
-      '<div class="kv"><span>工具</span><b>6 个</b></div>' +
+      '<div class="kv"><span>命令超时</span><b>' + (S.health.cmd_timeout || 45) + ' 秒</b></div>' +
+      '<div class="kv"><span>工具</span><b>' + (S.health.tools ? S.health.tools.length : 6) + ' 个</b></div>' +
       '<div class="kv"><span>存储</span><b>' + (S.health.db_size ? (S.health.db_size / 1024).toFixed(0) + ' KB' : '—') + '</b></div>' +
       '<button class="insbtn" data-act="clean">存储与清理</button>' +
       '</div>';
@@ -781,6 +792,9 @@
         break;
       case 'compact':
         addDivider('上下文已压缩 · ' + ev.removed + ' 条并入摘要，剩 ' + ev.kept + ' 条');
+        break;
+      case 'notice':
+        addNotice(ev.v);
         break;
       case 'think':
         ensureTurn();
