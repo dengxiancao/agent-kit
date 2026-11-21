@@ -270,6 +270,76 @@ sudo userdel -r agent     # 连家目录一起删，里面有 sessions 库的软
 
 ---
 
+## 九、让 Ubuntu 连上安卓手机（adb）
+
+`adui.py` 看屏幕、点屏幕都靠 adb。**优先插 USB 线**，别一上来折腾无线调试。
+
+### 9.1 USB（推荐，跟 WiFi 无关）
+
+手机端：
+
+1. 设置 → 关于手机 → 连点「MIUI 版本」7 次，开出开发者选项
+2. 打开「USB 调试」
+3. 小米还要打开「**USB 调试（安全设置）**」——这个开关决定 `input tap` 能不能真的点到屏幕上。它要求登录小米账号并插着 SIM 卡，没有就一直是灰的
+
+Ubuntu 端：
+
+```bash
+sudo apt install -y android-tools-adb
+adb devices
+```
+
+手机这时会弹「允许 USB 调试吗」，勾「一律允许」再确定。`adb devices` 出现 `xxxxx device` 就成了：
+
+```bash
+adb shell input keyevent 3      # 按一下 Home，手机有反应就通了
+```
+
+报 `no permissions` 或 `unauthorized`：
+
+```bash
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2717", MODE="0666", GROUP="plugdev"' | sudo tee /etc/udev/rules.d/51-android.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+# 拔掉重插一次，再 adb devices
+```
+
+`2717` 是小米的厂商 ID。别的牌子换 ID（三星 `04e8`、OPPO `22d9`、vivo `2d95`），或者直接 `lsusb` 看。
+
+### 9.2 无线调试为什么没 WiFi 就开不了
+
+Android 11 起，无线调试**强制要求手机已连接 WLAN**，4G/5G 不算。设置页会直接置灰，显示「请连接到 WLAN 网络」。这不是 MIUI 的 bug，是系统行为——它默认 adb 客户端在同一个局域网里。
+
+而且截图里那个 `10.42.99.191` 是运营商的**内网地址**，就算强行开了端口，电脑也路由不过去。
+
+想无线，先让手机和电脑进同一个局域网：
+
+- 笔记本开热点（Windows：设置 → 网络和 Internet → 移动热点），手机连上
+- 或者旧手机、随身 WiFi 开热点
+
+然后在手机上：开发者选项 → 无线调试 → 打开 → 「使用配对码配对设备」：
+
+```bash
+adb pair 192.168.137.23:37105      # 端口和六位码照手机屏幕抄
+adb connect 192.168.137.23:41234   # 连接用的是另一个端口
+adb devices
+```
+
+两个坑：
+
+- Android 11+ 的端口是**随机**的，每次重开无线调试都会变，不是 5555
+- 配对端口和连接端口不是同一个，都写在手机屏幕上
+
+### 9.3 已经 root 的话
+
+```bash
+su -c 'setprop service.adb.tcp.port 5555; stop adbd; start adbd'
+adb connect 手机IP:5555
+```
+
+这条不看 WiFi 状态。但小米 10S 得先解 BL 锁才能 root，为这个去解不值当。
+
+---
+
 ## 附：这套东西在 Ubuntu 上和手机上有什么不一样
 
 | | 手机 Termux | Ubuntu |
