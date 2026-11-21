@@ -51,11 +51,15 @@ python3 webchat.py --mock        # 不用 API key，先看界面能不能起来
 真实使用：
 
 ```bash
-export OPENAI_API_KEY=sk-xxx      # 或你自己的 endpoint
+export DEEPSEEK_KEY=sk-xxx       # https://platform.deepseek.com/api_keys
 python3 webchat.py --port 8080
 ```
 
 浏览器打开 `http://127.0.0.1:8080`。
+
+> 要在 **Ubuntu / Debian 服务器**上常驻（systemd、开机自启、后台跑），看
+> [DEPLOY-UBUNTU.md](DEPLOY-UBUNTU.md)，一条命令：`sudo sh deploy-ubuntu.sh`。
+
 
 左侧是会话列表，聊过的都在，关掉终端、重启虚拟机再打开还是那些对话。
 每条回复下面有步数 / 耗时 / token，右栏能看到上下文占用和工具时间线。
