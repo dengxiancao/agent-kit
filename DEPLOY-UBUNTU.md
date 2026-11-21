@@ -180,7 +180,6 @@ RestartSec=3
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=read-only
 ReadWritePaths=/home/agent/work /var/lib/agent-kit
 
 [Install]
@@ -231,7 +230,16 @@ sudo systemctl restart agent-kit
 `static/` 没下全。`cd /opt/agent-kit && sudo sh update.sh` 重跑一次，看有没有 ✗。
 
 **写文件报 `Permission denied`**
-服务开了 `ProtectSystem=strict`，只有 `ReadWritePaths` 里的目录可写。要么改 `AGENT_WORK` 指到可写目录，要么在那个 unit 里把目标目录加进 `ReadWritePaths`。
+服务开了 `ProtectSystem=strict`，`/etc`、`/usr`、`/bin` 这些系统目录只读，只有家目录、`ReadWritePaths` 里的目录可写。要让它处理别的目录，把那个目录加进 `ReadWritePaths`：
+
+```bash
+sudo systemctl edit agent-kit
+# 在打开的编辑器里写：
+# [Service]
+# ReadWritePaths=/srv/my-project
+```
+
+想连家目录也不许写，在 unit 里加一行 `ProtectHome=read-only`（代价是 `pip`、`git` 这类工具的缓存会失败）。
 
 **端口被占用**
 `sudo ss -lntp | grep 8765` 看是谁。改 `PORT=8766` 重启即可。
