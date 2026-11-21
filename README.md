@@ -77,6 +77,26 @@ python3 webchat.py --port 8080
 | **网络容错** | 接口抖动（DNS 失败、连接重置、5xx、429）自动重试 2 次；真失败时给一句能照做的中文提示，并在消息流里留一个「重试这一轮」按钮（v2.2） |
 | **访问口令** | `--host 0.0.0.0` 时自动生成，存在 `~/.config/webchat/token`。本机浏览器不用口令；局域网设备第一次要打开启动时打印的 `?k=` 地址，之后靠 cookie 记住。`--no-auth` 可关 |
 
+### v2.3：同一份代码，按运行环境自动切换
+
+之前提示词和工具集是**写死给手机 Termux 的**，搬到 Ubuntu 后模型一直以为自己在手机上，还会去调 `adui.py`、`ui.py` 这些服务器上没有的脚本，把步数耗在无效重试上。v2.3 起按环境自动分支：
+
+| 项 | 手机 | 服务器 |
+|---|---|---|
+| 身份提示词 | Termux 助手，含 adb / adui / ocr 用法 | Linux 助手，含 apt、systemd、非交互命令规范 |
+| 工具超时 | 45 秒 | **120 秒**（`AGENT_CMD_TIMEOUT` 可改） |
+| `ui` 工具 | 有 | 仅当有 `DISPLAY` 且 `ui.py` 存在 |
+| 命令执行 | — | **断开 stdin**，交互式命令不会再挂到超时 |
+| 失败处理 | 一直试到 100 步 | 连续 4 次失败自动停（`AGENT_FAIL_LIMIT`），消息流里留一条黄色提示 |
+
+右栏「环境」卡片现在会显示实际平台和命令超时，`curl /api/health` 也能看到 `platform`、`tools`、`cmd_timeout`。
+
+```bash
+# 服务器上想让单条命令跑更久
+AGENT_CMD_TIMEOUT=300 python3 webchat.py
+```
+
+
 ```bash
 # 想加自己的模型（逗号分隔）
 WEBCHAT_MODELS="deepseek-chat,deepseek-reasoner" python3 webchat.py
