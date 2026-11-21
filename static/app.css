@@ -430,3 +430,18 @@ html[data-theme="light"]{
     padding-bottom:env(safe-area-inset-bottom)}
   .fld input{height:40px;font-size:15px}
 }
+
+/* 熔断提示：连续失败自动停止时的醒目条 */
+.notice{display:flex;align-items:flex-start;gap:8px;margin:0 0 14px;padding:9px 11px;
+  border-radius:9px;border:1px solid var(--warn-line,rgba(214,158,46,.35));
+  background:var(--warn-soft,rgba(214,158,46,.10));color:var(--warn,#b7791f);
+  font-size:12.6px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+.notice::before{content:"";flex:0 0 auto;width:6px;height:6px;margin-top:6px;
+  border-radius:50%;background:currentColor;opacity:.75}
+@media (prefers-color-scheme:dark){
+  .notice{border-color:rgba(224,187,99,.30);background:rgba(224,187,99,.10);color:#e0bb63}
+}
+html[data-theme="dark"] .notice{border-color:rgba(224,187,99,.30);
+  background:rgba(224,187,99,.10);color:#e0bb63}
+html[data-theme="light"] .notice{border-color:rgba(214,158,46,.35);
+  background:rgba(214,158,46,.10);color:#b7791f}
