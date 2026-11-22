@@ -1038,7 +1038,7 @@ def cmd_ocr(crop=None, as_json=False, keep=None, minconf=None, psm=None, lang=No
         raise AdbError(
             "找不到 ocr.py。它要和 adui.py 放在一起：\n"
             "  cd ~/work && curl -fL -O https://ghfast.top/https://raw.githubusercontent.com/"
-            "dengxiancao/android-agent-kit/main/ocr.py\n"
+            "dengxiancao/agent-kit/main/ocr.py\n"
             "  python3 ocr.py doctor")
 
     path = keep or os.path.join(tempfile.gettempdir(), "adui_ocr.png")
