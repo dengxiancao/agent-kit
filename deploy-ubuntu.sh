@@ -15,7 +15,7 @@ APP_PORT=${PORT:-8765}
 DATA_DIR=${DATA_DIR:-/var/lib/agent-kit}
 ENV_FILE=${ENV_FILE:-/etc/agent-kit.env}
 UNIT=/etc/systemd/system/agent-kit.service
-BASE=${BASE:-https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main}
+BASE=${BASE:-https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/agent-kit/main}
 
 G=$(printf '\033[32m'); Y=$(printf '\033[33m'); R=$(printf '\033[31m')
 D=$(printf '\033[90m'); B=$(printf '\033[1m'); N=$(printf '\033[0m')
@@ -136,7 +136,7 @@ if [ "$HAS_SYSTEMD" = 1 ]; then
     step "注册 systemd 服务"
     cat > "$UNIT" <<EOF
 [Unit]
-Description=agent webchat (android-agent-kit)
+Description=agent webchat (agent-kit)
 After=network-online.target
 Wants=network-online.target
 
