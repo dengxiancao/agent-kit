@@ -232,7 +232,8 @@ sudo systemctl restart agent-kit
 | 连 `sudo` 都读不了 `/opt/agent-kit` 里的文件 | WSL 导入版，rootfs 放在 Windows 盘上（9p） | 7.4 |
 | `OSError: [Errno 98] Address already in use` | 8765 被旧进程或反复重启的服务占着 | 7.5 |
 | 能改的文件特别少 | `ProtectSystem=strict` 沙箱，故意的 | 7.6 |
-| 页面白屏 / 静态文件 404 | `static/` 没下全 | 7.7 |
+| `update.sh` 报"写入失败"，或反复问"是否替换" | 目标目录不可写（`/tmp` 与 `/opt` 跨设备，改名删不掉旧文件） | 7.7 |
+| 页面白屏 / 静态文件 404 | `static/` 没下全 | 7.8 |
 
 ### 7.1 服务起不来
 
@@ -485,7 +486,53 @@ sudo systemctl edit agent-kit
 ReadOnlyPaths=/mnt/c
 ```
 
-### 7.7 其他
+### 7.7 `update.sh` 报"写入失败"或"是否替换"
+
+这两种提示经常一起出现：
+
+```
+mv: 是否替换 'adui.py'，而忽略模式 0644 (rw-r--r--)？
+  ✗ adui.py       写入失败
+```
+
+或者连脚本本身都下不来：
+
+```
+Warning: Failed to open the file update.sh.new: 权限不够
+curl: (23) client returned ERROR on write of 8192 bytes
+```
+
+**根因只有一个：目标目录当前用户不可写。** 和网络、镜像、HTTP 代理都没关系。
+
+先判断：
+
+```bash
+ls -ld /opt/agent-kit
+touch /opt/agent-kit/.wtest && echo 可写 || echo 不可写
+df -h /opt                      # 排除磁盘满
+findmnt -no OPTIONS /opt        # 排除 ro 只读挂载
+```
+
+| 结果 | 处理 |
+|---|---|
+| `touch` 报权限不够，目录属主是 root | `sudo chown -R kali:kali /opt/agent-kit`（`kali` 换成你的用户名） |
+| `findmnt` 的 OPTIONS 里带 `ro` | 换目录：`cp -a /opt/agent-kit ~/agent-kit && cd ~/agent-kit` |
+| `df -h` 显示 100% | 清空间：`journalctl --vacuum-size=50M`，删 `~/.cache` |
+
+**为什么还会问"是否替换"**：`/tmp` 是 tmpfs，`/opt` 在另一个挂载点，`mv` 跨设备时不能 rename，只能"删掉目标 → 复制过去"。目录不可写就删不掉，这一步于是退化成交互确认；回车就等于放弃，脚本判定写入失败。所以重跑一百次结果都一样。
+
+改好属主后，重新取脚本再跑：
+
+```bash
+cd /opt/agent-kit
+curl -fL -o update.sh.new "https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/agent-kit/main/update.sh"
+chmod +x update.sh.new && mv -f update.sh.new update.sh
+sh update.sh
+```
+
+判断是否换上了新脚本：第一行打印 `agent-kit 更新` 是新版，`android-agent-kit 更新` 是旧版。新版（10025 字节起）会在写盘前检查目录权限，并把"跨设备 mv"改成"同目录中转 + 截断写入兜底"，不会再出现这个报错。
+
+### 7.8 其他
 
 **页面能开但白屏 / 静态文件 404**
 
