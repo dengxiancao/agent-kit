@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# android-agent-kit 一键更新（Termux / Linux 通用，POSIX sh，无第三方依赖）
+# agent-kit 一键更新（Termux / Linux 通用，POSIX sh，无第三方依赖）
 #
 #   sh update.sh                更新全部脚本
 #   sh update.sh ocr.py         只更新一个（可写多个）
@@ -14,7 +14,7 @@
 
 SELF_VER=1
 KIT_FILES="rev.py webchat.py adui.py ocr.py static/app.html static/app.css static/app.js MANUAL.md MANUAL.html START.md START.html DEPLOY-UBUNTU.md DEPLOY-UBUNTU.html deploy-ubuntu.sh update.sh"
-DEFAULT_BASE="https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main"
+DEFAULT_BASE="https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/agent-kit/main"
 # BASES 可直接用环境变量指定（多个用换行分隔），指定后不再追加默认镜像
 if [ -n "${BASES:-}" ]; then
     :
@@ -22,8 +22,8 @@ elif [ -n "${BASE:-}" ]; then
     BASES="$BASE"
 else
     BASES="$DEFAULT_BASE
-https://gh-proxy.com/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
-https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main"
+https://gh-proxy.com/https://raw.githubusercontent.com/dengxiancao/agent-kit/main
+https://raw.githubusercontent.com/dengxiancao/agent-kit/main"
 fi
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -178,7 +178,7 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 
 FIRST=$(printf '%s\n' "$BASES" | head -1)
 FIRST_HOST=$(printf '%s' "$FIRST" | sed 's#https\?://##; s#/.*##')
-say "${B}android-agent-kit 更新${N}"
+say "${B}agent-kit 更新${N}"
 say "${D}目录  $(pwd)"
 say "镜像  $FIRST_HOST（失败自动换下一个）${N}"
 say ""
@@ -257,7 +257,7 @@ elif [ -z "$FAILED_DL$FAILED_CHK" ]; then
 fi
 if [ -n "$FAILED_DL" ]; then
     say "${R}下载失败${N}：$FAILED_DL"
-    say "  换镜像重试：${B}BASE=https://gh-proxy.com/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main sh $0${N}"
+    say "  换镜像重试：${B}BASE=https://gh-proxy.com/https://raw.githubusercontent.com/dengxiancao/agent-kit/main sh $0${N}"
 fi
 if [ -n "$FAILED_CHK" ]; then
     say "${R}校验不通过${N}：$FAILED_CHK"
