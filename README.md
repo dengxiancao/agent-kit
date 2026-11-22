@@ -1,6 +1,6 @@
-# 手机 Agent 工具集
+# Agent 工具集
 
-在 **Termux（安卓手机）** 和 **Linux 虚拟机** 上跑一个自己的 agent：能聊天、能读代码、能逆向看包，也能直接操作屏幕。
+在 **安卓手机（Termux）**、**Linux 服务器 / 虚拟机** 上跑一个自己的 agent：能聊天、能读代码、能逆向看包，也能直接操作屏幕。同一套脚本，换台机器直接搬。
 
 全部脚本只用 Python 标准库，装好 Python 就能跑，不需要 pip install。
 OCR 依赖系统的 Tesseract（`pkg install tesseract`），Pillow 可选。
@@ -24,7 +24,7 @@ OCR 依赖系统的 Tesseract（`pkg install tesseract`），Pillow 可选。
 ## 更新
 
 ```bash
-curl -fL -o update.sh.part https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/update.sh
+curl -fL -o update.sh.part https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/agent-kit/main/update.sh
 mv update.sh.part update.sh && chmod +x update.sh
 sh update.sh
 ```
@@ -43,7 +43,7 @@ sh update.sh           # 再拉全部文件（含 static/ 三个）
 
 ```bash
 # 国内直连 github.com 常超时，走镜像前缀（原地址整段接在后面）
-git clone https://ghfast.top/https://github.com/dengxiancao/android-agent-kit ~/work-kit
+git clone https://ghfast.top/https://github.com/dengxiancao/agent-kit ~/work-kit
 cd ~/work-kit
 python3 webchat.py --mock        # 不用 API key，先看界面能不能起来
 ```
@@ -135,8 +135,8 @@ chmod 600 ~/.config/webchat/env
 > 里面每一步都有预期输出和失败对照表。**建议先读手册再动手**，尤其是 ADB 那一节。
 >
 > 在线看：
-> - 没接触过命令行：<https://dengxiancao.github.io/android-agent-kit/START.html>
-> - 已经会用终端：<https://dengxiancao.github.io/android-agent-kit/MANUAL.html>
+> - 没接触过命令行：<https://dengxiancao.github.io/agent-kit/START.html>
+> - 已经会用终端：<https://dengxiancao.github.io/agent-kit/MANUAL.html>
 >
 > 两份都是单文件，手机浏览器直接打开，排版自适应。
 
