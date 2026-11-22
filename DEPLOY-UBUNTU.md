@@ -174,7 +174,7 @@ User=agent
 Group=agent
 WorkingDirectory=/opt/agent-kit
 EnvironmentFile=/etc/agent-kit.env
-ExecStart=/usr/bin/python3 /opt/agent-kit/webchat.py
+ExecStart=/usr/bin/python3 -B /opt/agent-kit/webchat.py
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
@@ -218,43 +218,296 @@ sudo systemctl restart agent-kit
 
 ---
 
-## 七、常见问题
+## 七、排错手册
 
-**`Active: failed`，日志说 `缺少 DEEPSEEK_KEY`**
-`/etc/agent-kit.env` 里的 key 没填，或者行首有空格。改完 `sudo systemctl restart agent-kit`。
+下面这些坑都是真实踩过的。先按报错在表里找，再跳到对应小节。
+
+| 报错 / 现象 | 真正的原因 | 看哪节 |
+|---|---|---|
+| `Unit file agent-kit.service does not exist` | 部署时 systemd 没开，脚本跳过了服务注册 | 7.1 |
+| `Active: failed`，日志写 `缺少 DEEPSEEK_KEY` | 不是没填，是 key 没进到进程环境里 | 7.2 |
+| `status=217/USER` | `agent` 用户不存在 | 7.1 |
+| `status=203/EXEC` | `ExecStart` 里的 python 路径不对 | 7.1 |
+| 手动运行报 `Permission denied` | `/etc/agent-kit.env` 是 `600 root`，普通用户读不了 | 7.3 |
+| 连 `sudo` 都读不了 `/opt/agent-kit` 里的文件 | WSL 导入版，rootfs 放在 Windows 盘上（9p） | 7.4 |
+| `OSError: [Errno 98] Address already in use` | 8765 被旧进程或反复重启的服务占着 | 7.5 |
+| 能改的文件特别少 | `ProtectSystem=strict` 沙箱，故意的 | 7.6 |
+| 页面白屏 / 静态文件 404 | `static/` 没下全 | 7.7 |
+
+### 7.1 服务起不来
+
+**`Unit file agent-kit.service does not exist.`**
+
+单元文件根本没写进 `/etc/systemd/system/`。最常见的原因是：第一次跑部署脚本时 WSL 还没启用 systemd，脚本走了「跳过服务注册」分支，只复制了代码和配置。后来开了 systemd，但没重跑脚本。
+
+```bash
+# 1. 确认 systemd 真的在跑（输出 systemd 才算）
+ps -p 1 -o comm=
+
+# 2. 确认单元文件在不在
+ls -l /etc/systemd/system/agent-kit.service
+
+# 3. 不在就重跑脚本，它是幂等的，不会删你的 key
+sudo sh /tmp/deploy.sh
+```
+
+`/tmp/deploy.sh` 可能已被 WSL 重启清掉了，重新下载：
+
+```bash
+curl -fsSL -o /tmp/deploy.sh https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/deploy-ubuntu.sh
+sudo sh /tmp/deploy.sh
+```
+
+**`status=217/USER`**
+
+unit 里写了 `User=agent`，但这个用户不存在——说明脚本只跑了一半。
+
+```bash
+getent passwd agent || sudo useradd -r -m -d /home/agent -s /bin/bash agent
+sudo systemctl daemon-reload && sudo systemctl restart agent-kit
+```
 
 **`status=203/EXEC`**
-`ExecStart` 里的 python 路径不对。`which python3` 看一下，Ubuntu 一般是 `/usr/bin/python3`。
 
-**页面能开但是白屏 / 404**
-`static/` 没下全。`cd /opt/agent-kit && sudo sh update.sh` 重跑一次，看有没有 ✗。
+`ExecStart` 里的解释器路径不对：
 
-**写文件报 `Permission denied`**
-服务开了 `ProtectSystem=strict`，`/etc`、`/usr`、`/bin` 这些系统目录只读，只有家目录、`ReadWritePaths` 里的目录可写。要让它处理别的目录，把那个目录加进 `ReadWritePaths`：
+```bash
+which python3            # 一般是 /usr/bin/python3
+systemctl cat agent-kit  # 对照看 ExecStart 那一行
+```
+
+### 7.2 key 明明填了，还说缺少
+
+先做一次验证，不要猜：
+
+```bash
+sudo -u agent -H bash -c 'set -a; . ~/.config/webchat/env; set +a; echo "长度=${#DEEPSEEK_KEY} 开头=${DEEPSEEK_KEY:0:6} url=$DEEPSEEK_URL"'
+```
+
+正常输出是 `长度=35 开头=sk- url=https://api.deepseek.com/chat/completions`。不符合就是下面三种之一。
+
+**原因一：程序读的文件不是你以为的那个**
+
+这是最容易踩的。程序**只读 `~/.config/webchat/env`**；`/etc/agent-kit.env` 是给 systemd 的 `EnvironmentFile=` 用的，手动运行永远读不到它。
+
+改哪个取决于你怎么跑：
+
+| 怎么跑 | 读哪份 | 改哪份 |
+|---|---|---|
+| `systemctl start agent-kit` | `/etc/agent-kit.env`（root 读，降权执行） | `/etc/agent-kit.env` |
+| 手动 `python3 webchat.py` | `~/.config/webchat/env` | 该用户家目录那份 |
+
+两份都维护最省心：
+
+```bash
+sudo cp /home/agent/.config/webchat/env /etc/agent-kit.env
+sudo chown root:root /etc/agent-kit.env && sudo chmod 600 /etc/agent-kit.env
+```
+
+**原因二：文件是 Windows 上编辑的，带了 BOM 或 CRLF**
+
+变量名会变成 `\ufeffDEEPSEEK_KEY` 或值尾多一个 `\r`，等于没配。
+
+```bash
+head -c 8 ~/.config/webchat/env | xxd        # 开头出现 efbb bf 就是 BOM
+cat -A ~/.config/webchat/env | head -3       # 行尾 ^M$ 就是 CRLF，正常应该是 $
+```
+
+一次修好：
+
+```bash
+sudo sed -i '1s/^\xEF\xBB\xBF//; s/\r$//' /home/agent/.config/webchat/env
+```
+
+**原因三：等号两边多了空格**
+
+`DEEPSEEK_KEY = sk-xxx` 会被 shell 当成命令执行，变量根本不设置。必须是**紧贴的 `KEY=VALUE`**。
+
+正确的配置长这样，整段覆盖最稳：
+
+```bash
+sudo tee /home/agent/.config/webchat/env >/dev/null <<'EOF'
+DEEPSEEK_KEY=sk-你的key
+DEEPSEEK_URL=https://api.deepseek.com/chat/completions
+DEEPSEEK_MODEL=deepseek-chat
+AGENT_WORK=/home/agent/work
+HOST=127.0.0.1
+PORT=8765
+EOF
+sudo chown agent:agent /home/agent/.config/webchat/env
+sudo chmod 600 /home/agent/.config/webchat/env
+```
+
+> `DEEPSEEK_URL` 必须带 `/chat/completions`。只写到 `https://api.deepseek.com` 会返回 404，报错看起来像 key 不对。
+
+### 7.3 手动运行报 Permission denied
+
+`/etc/agent-kit.env` 权限是 `600 root`，里面存着 key，故意不让别的用户读。所以：
+
+```bash
+# ✗ 普通用户读不了
+cd /opt/agent-kit && set -a; . /etc/agent-kit.env; set +a; python3 webchat.py
+# sh: .: cannot open /etc/agent-kit.env: Permission denied
+```
+
+正确姿势是以 `agent` 身份跑，并让它读自己家目录的配置（无 systemd 时部署脚本会自动做这一步）：
+
+```bash
+sudo mkdir -p /home/agent/.config/webchat
+sudo cp /etc/agent-kit.env /home/agent/.config/webchat/env
+sudo chown -R agent:agent /home/agent/.config
+
+sudo -u agent -H python3 -B /opt/agent-kit/webchat.py --port 8765
+```
+
+`-H` 让 `~` 指向 `/home/agent`，不加的话程序会去读 `/root/.config/webchat/env`。
+
+### 7.4 WSL 导入版的坑（rootfs 在 Windows 盘上）
+
+如果你是用 `wsl --import` 装的自定义发行版，`/` 可能不是 ext4，而是挂在 Windows 某个盘上：
+
+```bash
+findmnt -no FSTYPE,OPTIONS /
+# 正常：ext4  rw,relatime
+# 异常：9p    rw,...,aname=drvfs;path=H:\;uid=1000,gid=1000,...
+```
+
+看到 `9p` 和 `path=H:\` 就是这种情况。后果是一串看起来毫无道理的报错：
+
+| 现象 | 原因 |
+|---|---|
+| `sudo` 也打不开自己的文件，报 `Errno 13` | root 被映射成 Windows 侧身份，Unix 权限位只是装饰 |
+| `ls -la` 要几十秒 | 9p 协议跨层访问 NTFS，比 ext4 慢一个数量级 |
+| 启动报 `PermissionError: .../__pycache__` | Windows 拒绝创建缓存目录 |
+| `chmod`/`chown` 改了没效果 | 权限由 Windows ACL 决定 |
+| 数据库偶发 `database is locked` | 9p 上的文件锁不可靠 |
+
+三招应对，按推荐程度排：
+
+**① 换官方发行版（根治）**
+
+```powershell
+# Windows PowerShell
+wsl --install -d kali-linux
+```
+
+rootfs 在 vhdx（ext4）里，权限、性能、systemd 全部正常。导入版留着当试验田就行。
+
+**② 加 `-B` 避开写缓存**
+
+```bash
+sudo -u agent -H python3 -B /opt/agent-kit/webchat.py --port 8765
+```
+
+写进 unit 就永久生效：`ExecStart=/usr/bin/python3 -B /opt/agent-kit/webchat.py`。
+
+**③ 放在 Windows 侧确定可写的目录**
+
+```bash
+mkdir -p /mnt/h/wsl/agent-work
+# 然后改配置里的 AGENT_WORK
+```
+
+只能缓解，权限问题依旧，只是换了个位置。
+
+### 7.5 端口被占用
+
+```
+OSError: [Errno 98] Address already in use
+```
+
+说明 8765 上已经有一个进程。常见于三种情况：
+
+- 之前手动启动过，进程还在后台
+- `nohup` 留在运行
+- systemd 服务因为 key 不对在**反复重启**，每次启动都去抢端口
+
+```bash
+sudo ss -lntp | grep 8765      # 看 pid 和进程名
+sudo ps -o pid,user,cmd -p <PID>
+```
+
+| 查到的是 | 处理 |
+|---|---|
+| `python3 ... webchat.py` | `sudo kill <PID>` |
+| systemd 的 `agent-kit` | `sudo systemctl stop agent-kit`（先别 enable，等配置修好） |
+| 分不清 | `sudo pkill -f webchat.py`，一次清干净 |
+
+想先看到界面，换个端口最快：
+
+```bash
+sudo -u agent -H python3 -B /opt/agent-kit/webchat.py --port 8766
+# 浏览器开 http://127.0.0.1:8766
+```
+
+### 7.6 能改的文件特别少
+
+这是**两层限制叠加**，都是故意的。
+
+| 层 | 在哪 | 限制什么 | 报错 |
+|---|---|---|---|
+| 代码层 | `webchat.py` 的 `safe()` | `read_file`/`write_file`/`list_dir` 只能在 `AGENT_WORK` 内 | `路径越界，只能访问工作目录` |
+| 系统层 | unit 的 `ProtectSystem=strict` | 整个文件系统只读，只有 `ReadWritePaths` 里的目录可写 | `Permission denied` / `Read-only file system` |
+
+`run_shell` 不受代码层限制（能 `cat /etc/passwd`），但写仍然被系统层挡住。
+
+默认能写的只有 `/home/agent/work` 和 `/var/lib/agent-kit`。要放开哪个：
+
+```bash
+# 1. 扩大文件工具的可视范围（代码层）
+sudo sed -i 's|^AGENT_WORK=.*|AGENT_WORK=/home/agent|' /etc/agent-kit.env
+
+# 2. 同步放行系统层
+sudo systemctl edit agent-kit
+# [Service]
+# ReadWritePaths=/home/agent
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl restart agent-kit
+```
+
+**为什么不默认全放开**：它手里是一个能执行任意命令的 shell，全盘可写意味着一句 `rm -rf /` 或改坏 `/etc/fstab` 就完了。限制的是爆炸半径。
+
+真要全放开（只建议在一次性环境里）：
 
 ```bash
 sudo systemctl edit agent-kit
-# 在打开的编辑器里写：
 # [Service]
-# ReadWritePaths=/srv/my-project
+# ProtectSystem=no
+# ProtectHome=no
+# PrivateTmp=no
 ```
 
-想连家目录也不许写，在 unit 里加一行 `ProtectHome=read-only`（代价是 `pip`、`git` 这类工具的缓存会失败）。
+⚠️ WSL 的 `/mnt/c` 就是你的 Windows C 盘。全放开之后，agent 能直接改写桌面文件。至少保留一条只读：
 
-**端口被占用**
-`sudo ss -lntp | grep 8765` 看是谁。改 `PORT=8766` 重启即可。
+```ini
+ReadOnlyPaths=/mnt/c
+```
 
-**WSL / Docker 里 `systemctl` 用不了**
-脚本会自动跳过服务注册。前台跑：
+### 7.7 其他
+
+**页面能开但白屏 / 静态文件 404**
+
+`static/` 没下全：
 
 ```bash
-cd /opt/agent-kit && set -a; . /etc/agent-kit.env; set +a; python3 webchat.py
+ls /opt/agent-kit/static/          # 应该有 app.html / app.css / app.js
+cd /opt/agent-kit && sudo sh update.sh
 ```
 
-WSL 想用 systemd，在 `/etc/wsl.conf` 里加 `[boot]\nsystemd=true`，然后 `wsl --shutdown` 重进。
+**能聊天，一调工具就报错**
 
-**能聊天但一调工具就报错**
-看右栏「最近工具」和时间线，点开失败的那条。多数是工作目录里没有它要的文件，或者命令在 Ubuntu 上不存在（比如 `adb`、`termux-*`）。
+看右栏「最近工具」，点开失败那条。多数是工作目录里没那个文件，或者命令在 Ubuntu 上不存在（`adb`、`termux-*`、`pkg` 这些是手机专用的）。
+
+**改了配置不生效**
+
+```bash
+sudo systemctl restart agent-kit    # systemd
+# 或 Ctrl+C 后重新执行启动命令（手动跑）
+```
+
+配置只在进程启动时读一次。
 
 ---
 
