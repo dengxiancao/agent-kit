@@ -58,7 +58,11 @@ python3 webchat.py --port 8080
 浏览器打开 `http://127.0.0.1:8080`。
 
 > 要在 **Ubuntu / Debian 服务器**上常驻（systemd、开机自启、后台跑），看
-> [DEPLOY-UBUNTU.md](DEPLOY-UBUNTU.md)，一条命令：`sudo sh deploy-ubuntu.sh`。
+> [DEPLOY-UBUNTU.md](DEPLOY-UBUNTU.md)（[网页版](DEPLOY-UBUNTU.html) 更好读），一条命令：`sudo sh deploy-ubuntu.sh`。
+>
+> 部署卡住了先翻它的**第七节「排错手册」**：服务注册失败、`agent` 用户不存在、
+> key 明明填了却说缺少、`Permission denied`、WSL 导入版（rootfs 在 Windows 盘上）、
+> 端口被占用、能改的文件太少 —— 每一条都有现象、原因和可直接复制的修法。
 
 
 左侧是会话列表，聊过的都在，关掉终端、重启虚拟机再打开还是那些对话。
