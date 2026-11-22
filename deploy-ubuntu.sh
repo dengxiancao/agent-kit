@@ -146,7 +146,7 @@ User=$APP_USER
 Group=$APP_USER
 WorkingDirectory=$APP_DIR
 EnvironmentFile=$ENV_FILE
-ExecStart=/usr/bin/python3 $APP_DIR/webchat.py
+ExecStart=/usr/bin/python3 -B $APP_DIR/webchat.py
 Restart=on-failure
 RestartSec=3
 
@@ -180,8 +180,21 @@ EOF
 
 TIP
     fi
-    warn "临时前台跑（关掉窗口就停）："
-    printf '    cd %s && set -a; . %s; set +a; python3 webchat.py\n' "$APP_DIR" "$ENV_FILE"
+    # 前台跑要读 ~/.config/webchat/env（/etc 那份是 600 root，普通用户读不了），
+    # 所以把配置同步一份到服务用户家目录，权限属主都设好。
+    UHOME=$(getent passwd "$APP_USER" 2>/dev/null | cut -d: -f6)
+    if [ -n "${UHOME:-}" ] && [ -d "$UHOME" ]; then
+        install -d -m 700 -o "$APP_USER" -g "$APP_USER" \
+            "$UHOME/.config" "$UHOME/.config/webchat" 2>/dev/null || true
+        install -m 600 -o "$APP_USER" -g "$APP_USER" \
+            "$ENV_FILE" "$UHOME/.config/webchat/env" 2>/dev/null || true
+        warn "临时前台跑（以 $APP_USER 身份，关掉窗口就停）："
+        printf '    sudo -u %s -H python3 -B %s/webchat.py\n' "$APP_USER" "$APP_DIR"
+        printf '    %s改了 %s 之后要重新跑本脚本，或直接改上面那份。%s\n' "$D" "$ENV_FILE" "$N"
+    else
+        warn "临时前台跑（没找到 $APP_USER 的家目录，只能走 root）："
+        printf '    sudo sh -c "cd %s && set -a && . %s && set +a && exec python3 -B webchat.py"\n' "$APP_DIR" "$ENV_FILE"
+    fi
 fi
 
 # ---------------------------------------------------------------- 6. 启动
