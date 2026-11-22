@@ -159,10 +159,11 @@ if [ "$SELF_UPDATE" = 1 ]; then
     if fetch "update.sh" "$TMP/update.sh"; then
         if same "$TMP/update.sh" "$SELF_DIR/$(basename "$0")"; then
             skip "update.sh" "已是最新"
-        else
-            cp "$TMP/update.sh" "$SELF_DIR/$(basename "$0")"
-            chmod +x "$SELF_DIR/$(basename "$0")"
+        elif cp -f "$TMP/update.sh" "$SELF_DIR/$(basename "$0")" 2>/dev/null; then
+            chmod +x "$SELF_DIR/$(basename "$0")" 2>/dev/null
             upd "update.sh" "$(fsize "$SELF_DIR/$(basename "$0")") 字节"
+        else
+            bad "update.sh" "写入失败：$SELF_DIR 不可写"
         fi
     else
         bad "update.sh" "下载失败，旧的还能用"
@@ -175,6 +176,11 @@ fi
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/kit.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT INT TERM
+
+if [ ! -w "$(pwd)" ]; then
+    say "${Y}注意${N}：当前目录不可写，更新会失败"
+    say "      ${D}sudo chown -R $(id -un) \"$(pwd)\"${N}   然后重跑"
+fi
 
 FIRST=$(printf '%s\n' "$BASES" | head -1)
 FIRST_HOST=$(printf '%s' "$FIRST" | sed 's#https\?://##; s#/.*##')
@@ -225,13 +231,52 @@ for f in $TARGETS; do
             ;;
     esac
 
+    # 落地三步走：同目录复制 → rename → 截断写入兜底
+    # 直接用 mv 从 /tmp 搬会跨设备（tmpfs → 磁盘/共享目录），退化成
+    # copy+unlink；在 virtiofs、9p 这类共享挂载上 unlink 常被拒，
+    # 于是出现「无法进行跨设备的移动…无法删除」。
+    tdir=$(dirname "$f")
+    if [ ! -w "$tdir" ]; then
+        bad "$f" "目录不可写：$tdir"
+        say "     ${D}修法：sudo chown -R $(id -un) \"$(cd "$tdir" 2>/dev/null && pwd || echo "$tdir")\"${N}"
+        FAILED_CHK="$FAILED_CHK $f"
+        continue
+    fi
+
+    newf="$tdir/.$(basename "$f").new.$$"
+    if ! cp -f "$TMP/$f" "$newf" 2>/dev/null; then
+        bad "$f" "复制到目标目录失败（空间不足或只读）"
+        rm -f "$newf" 2>/dev/null
+        FAILED_CHK="$FAILED_CHK $f"
+        continue
+    fi
+
+    old=""
     if [ -f "$f" ]; then
         old=$(fsize "$f")
-        cp "$f" "$f.bak" 2>/dev/null
-        mv "$TMP/$f" "$f" || { bad "$f" "写入失败"; FAILED_CHK="$FAILED_CHK $f"; continue; }
+        cp -f "$f" "$f.bak" 2>/dev/null
+    fi
+
+    if command mv -f "$newf" "$f" 2>/dev/null; then
+        :
+    elif cat "$newf" > "$f" 2>/dev/null; then
+        rm -f "$newf" 2>/dev/null
+    else
+        bad "$f" "写入失败（目标只读或共享目录拒绝改名）"
+        rm -f "$newf" 2>/dev/null
+        FAILED_CHK="$FAILED_CHK $f"
+        continue
+    fi
+
+    if ! same "$f" "$TMP/$f"; then
+        bad "$f" "写入后内容不一致"
+        FAILED_CHK="$FAILED_CHK $f"
+        continue
+    fi
+
+    if [ -n "$old" ]; then
         upd "$f" "$old → $(fsize "$f")  (旧的存为 $f.bak)"
     else
-        mv "$TMP/$f" "$f" || { bad "$f" "写入失败"; FAILED_CHK="$FAILED_CHK $f"; continue; }
         ok "$f" "新增 $(fsize "$f")"
     fi
     case "$f" in
