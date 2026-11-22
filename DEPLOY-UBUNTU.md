@@ -12,14 +12,14 @@ SSH 登进 Ubuntu，依次执行：
 
 ```bash
 sudo apt update && sudo apt install -y git
-git clone https://github.com/dengxiancao/android-agent-kit.git ~/agent-kit-src
+git clone https://github.com/dengxiancao/agent-kit.git ~/agent-kit-src
 sudo sh ~/agent-kit-src/deploy-ubuntu.sh
 ```
 
 没有 git 也行：
 
 ```bash
-curl -fsSL -o /tmp/deploy.sh https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/deploy-ubuntu.sh
+curl -fsSL -o /tmp/deploy.sh https://raw.githubusercontent.com/dengxiancao/agent-kit/main/deploy-ubuntu.sh
 sudo sh /tmp/deploy.sh
 ```
 
@@ -144,7 +144,7 @@ sudo chown -R agent:agent /var/lib/agent-kit /home/agent/work
 
 # 2. 代码
 cd /opt/agent-kit
-sudo curl -fL -o update.sh https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/update.sh
+sudo curl -fL -o update.sh https://raw.githubusercontent.com/dengxiancao/agent-kit/main/update.sh
 sudo sh update.sh
 sudo chown -R agent:agent /opt/agent-kit
 ls static/          # 应该有 app.html app.css app.js
@@ -254,7 +254,7 @@ sudo sh /tmp/deploy.sh
 `/tmp/deploy.sh` 可能已被 WSL 重启清掉了，重新下载：
 
 ```bash
-curl -fsSL -o /tmp/deploy.sh https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/deploy-ubuntu.sh
+curl -fsSL -o /tmp/deploy.sh https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/agent-kit/main/deploy-ubuntu.sh
 sudo sh /tmp/deploy.sh
 ```
 
