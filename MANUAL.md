@@ -1,10 +1,10 @@
-# 手机 Agent 工具集
+# Agent 工具集
 
 > 部署与使用手册
 
-**2026.11.19** · 适用于 Termux（Android 11+）与 Alpine Linux 虚拟机
+**2026.11.19** · 适用于 Android（Termux，Android 11+）与 Linux（服务器 / 虚拟机）
 
-这套东西的目标：在手机上跑一个**能真正动手**的 AI——聊天、执行命令、分析 APK、操控手机屏幕。七个脚本加三个前端文件，两块环境，彼此独立，坏一个不影响其他。
+这套东西的目标：跑一个**能真正动手**的 AI——聊天、执行命令、分析 APK、操控屏幕。手机上装 Termux 能跑，Linux 服务器扔上去也能跑，两个环境共用同一份代码。七个脚本加三个前端文件，彼此独立，坏一个不影响其他。
 
 
 ## 零、先看这张图
@@ -26,12 +26,12 @@
 
 ## 一、文件清单
 
-所有文件都在仓库 github.com/dengxiancao/android-agent-kit。下载有三种方式，按你的网络选一种就行。
+所有文件都在仓库 github.com/dengxiancao/agent-kit。下载有三种方式，按你的网络选一种就行。
 
 **方式 A：整仓克隆（推荐，墙内可用）**
 
 ```
-git clone --depth 1 https://ghfast.top/https://github.com/dengxiancao/android-agent-kit ~/work-kit
+git clone --depth 1 https://ghfast.top/https://github.com/dengxiancao/agent-kit ~/work-kit
 ```
 
 `ghfast.top/` 是 GitHub 的镜像前缀，原地址整段接在后面即可。以后更新：
@@ -51,7 +51,7 @@ git config --global url."https://ghfast.top/https://github.com/".insteadOf "http
 只要一两个文件时用这个。前缀和方式 A 是同一个镜像，只是后面的地址不同：
 
 ```
-BASE=https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
+BASE=https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/agent-kit/main
 cd ~/work
 curl -fL -o adui.py.part $BASE/adui.py && mv adui.py.part adui.py
 ```
@@ -63,13 +63,13 @@ curl -fL -o adui.py.part $BASE/adui.py && mv adui.py.part adui.py
 jsDelivr 有国内 CDN，通常是三者里最快的，但**内容会缓存几个小时**——刚更新的版本可能还是旧的，拿新版别用它：
 
 ```
-BASE=https://cdn.jsdelivr.net/gh/dengxiancao/android-agent-kit@main
+BASE=https://cdn.jsdelivr.net/gh/dengxiancao/agent-kit@main
 ```
 
 `raw.githubusercontent.com` 直连在部分网络下会报 `Read error (Connection timed out) in headers` —— 域名能解析、TCP 也连得上，但响应被中途掐断。**这种断法改 DNS 没用**：
 
 ```
-BASE=https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main
+BASE=https://raw.githubusercontent.com/dengxiancao/agent-kit/main
 ```
 
 | 文件 | 字节数 | 干什么 | 装在哪 |
@@ -93,7 +93,7 @@ wc -c rev.py webchat.py adui.py ocr.py static/app.html static/app.css static/app
 
 > **`webchat.py` 必须和 `static/` 目录放在同一层。** 只拷 `webchat.py` 过来，打开页面会看到「缺少 static 目录」的提示页——不是程序坏了，是少了三个前端文件。
 
-手机上看这份手册不用下载，直接开在线版：https://dengxiancao.github.io/android-agent-kit/MANUAL.html
+手机上看这份手册不用下载，直接开在线版：https://dengxiancao.github.io/agent-kit/MANUAL.html
 
 > 仓库是长期地址，不会像临时粘贴站那样过期。改完代码 `git commit` 回自己仓库，换手机也不用重找链接。
 
@@ -108,7 +108,7 @@ wc -c rev.py webchat.py adui.py ocr.py static/app.html static/app.css static/app
 
 ```
 cd ~/work
-curl -fL -o update.sh.part https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/update.sh
+curl -fL -o update.sh.part https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/agent-kit/main/update.sh
 mv update.sh.part update.sh && chmod +x update.sh
 sh update.sh
 ```
