@@ -476,7 +476,7 @@ cd ~/work
 **第一步，把脚本本身下下来**：
 
 ```
-curl -fL -o update.sh.part "https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/update.sh" && mv update.sh.part update.sh
+curl -fL -o update.sh.part "https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/agent-kit/main/update.sh" && mv update.sh.part update.sh
 ```
 
 **这行在干什么**：`curl` 是下载工具。`ghfast.top/` 是国内镜像前缀，原地址整段接在它后面。`-f` 表示「服务器返回错误就直接失败」，`-L` 表示「遇到跳转跟着走」。
@@ -496,7 +496,7 @@ sh update.sh
 成功会看到：
 
 ```
-android-agent-kit 更新
+agent-kit 更新
 目录  /data/data/com.termux/files/home/work
 镜像  ghfast.top（失败自动换下一个）
 
@@ -529,7 +529,7 @@ sh update.sh
 `update.sh` 也下不下来的时候（镜像全挂），用这段。**整段复制，一次粘贴**：
 
 ```
-BASE="https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main"
+BASE="https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/agent-kit/main"
 
 for f in rev.py webchat.py adui.py ocr.py update.sh; do
   curl -fsSL -o "$f.part" "$BASE/$f" && [ -s "$f.part" ] && mv "$f.part" "$f" && echo "ok $f"
@@ -552,7 +552,7 @@ done
 
 ```
 pkg install -y git
-git clone --depth 1 https://ghfast.top/https://github.com/dengxiancao/android-agent-kit ~/work-kit
+git clone --depth 1 https://ghfast.top/https://github.com/dengxiancao/agent-kit ~/work-kit
 ```
 
 这会把整个仓库（含手册、原型图）拉到 `~/work-kit`。以后更新：
@@ -1441,7 +1441,7 @@ git 和 curl 8.3 已经装过了，直接拉：
 
 ```
 mkdir -p ~/work && cd ~/work
-curl -fL -o update.sh.part "https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/android-agent-kit/main/update.sh" && mv update.sh.part update.sh
+curl -fL -o update.sh.part "https://ghfast.top/https://raw.githubusercontent.com/dengxiancao/agent-kit/main/update.sh" && mv update.sh.part update.sh
 sh update.sh
 ```
 
@@ -1835,4 +1835,4 @@ python3 adui.py doctor
 
 ---
 
-<footer>这份手册对应 android-agent-kit v2（2026.11.19）。命令有变化以 <code>python3 脚本名 --help</code> 为准。</footer>
+<footer>这份手册对应 agent-kit v2（2026.11.19）。命令有变化以 <code>python3 脚本名 --help</code> 为准。</footer>
