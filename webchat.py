@@ -280,7 +280,6 @@ class Store:
         if d:
             os.makedirs(d, exist_ok=True)
         self.lock = threading.RLock()
-        self.repaired = set()
         self.con = sqlite3.connect(path, check_same_thread=False, timeout=10)
         self.con.row_factory = sqlite3.Row
         with self.lock:
@@ -425,7 +424,7 @@ class Store:
             elif role == "tool":
                 out.append({"role": "tool", "tool_call_id": r["tool_call_id"],
                             "content": r["content"] or ""})
-        return out
+        return fix_tool_seq(out)
 
     def ctx_tokens(self, sid):
         """当前真正会发出去的那部分，估算 token。"""
@@ -571,17 +570,31 @@ class Store:
                 "freed": max(0, before - self.size())}
 
     def repair(self, sid):
-        """补掉崩溃时留下的半条消息：assistant 有 tool_calls，但 tool 结果没写回。
-        不补的话，下次把这段发出去必定 400。"""
-        if sid in self.repaired:
-            return
-        self.repaired.add(sid)
+        """补掉崩溃/中断时留下的半条消息：assistant 有 tool_calls，但 tool 结果没写回。
+        不补的话，下次把这段发出去必定 400。
+
+        注意：这里**不能**做「每个会话只修一次」的缓存。会话进行中被 stop 或熔断
+        会新产生半条，缓存会让它永远修不到，于是下一句就 400（而且怎么重试都一样）。
+        """
         with self.lock:
-            r = self.con.execute(
-                "SELECT * FROM messages WHERE sid=? AND role='assistant' "
-                "AND tool_calls IS NOT NULL ORDER BY seq DESC LIMIT 1", (sid,)).fetchone()
-            if not r:
+            # 只看尾巴上的那一轮。中间历史的缺口交给 fix_tool_seq 在内存里补，
+            # 在这里插会给会话末尾凭空多出垃圾记录（每请求一条，越积越多）。
+            last = self.con.execute(
+                "SELECT * FROM messages WHERE sid=? ORDER BY seq DESC LIMIT 1",
+                (sid,)).fetchone()
+            if not last or last["role"] not in ("assistant", "tool"):
                 return
+            if last["role"] == "assistant":
+                if not last["tool_calls"]:
+                    return
+                r = last
+            else:
+                r = self.con.execute(
+                    "SELECT * FROM messages WHERE sid=? AND role='assistant' AND seq<? "
+                    "AND tool_calls IS NOT NULL ORDER BY seq DESC LIMIT 1",
+                    (sid, last["seq"])).fetchone()
+                if not r:
+                    return
             try:
                 tcs = json.loads(r["tool_calls"])
             except Exception:
@@ -1017,6 +1030,45 @@ def mock_chat(msgs):
 
 # ------------------------------------------------------------------ agent 循环
 
+def fix_tool_seq(msgs):
+    """把消息序列修成 API 认的样子，发出前最后一道保险。
+
+    OpenAI 兼容接口（DeepSeek 走的就是这套）硬性要求：
+    一条 assistant 带 N 个 tool_calls，后面必须紧跟 N 条 tool 消息，
+    且 tool_call_id 一一对应。少一条就 400：
+    "insufficient tool messages following tool_calls message"。
+
+    中断、熔断、分叉、压缩都可能留下半截。这里就地修，不碰数据库：
+      · tool 少了 → 补一条占位结果（告诉模型这步没执行，比假装执行成功安全）
+      · tool 多了（没有前驱 tool_calls 的孤儿） → 丢掉，否则同样 400
+    """
+    out = []
+    i, n = 0, len(msgs)
+    while i < n:
+        m = msgs[i]
+        role = m.get("role")
+        if role == "assistant" and m.get("tool_calls"):
+            out.append(m)
+            tcs = m["tool_calls"]
+            ids = [t.get("id") for t in tcs if t.get("id")]
+            i += 1
+            got = {}
+            while i < n and msgs[i].get("role") == "tool":
+                got[msgs[i].get("tool_call_id")] = msgs[i]
+                i += 1
+            for tid in ids:
+                out.append(got.get(tid) or {
+                    "role": "tool", "tool_call_id": tid,
+                    "content": "（这一步没有执行或结果丢失，按中断处理；需要的话重新调用）"})
+            continue
+        if role == "tool":          # 孤儿结果，留着必 400
+            i += 1
+            continue
+        out.append(m)
+        i += 1
+    return out
+
+
 def trim(msgs, keep=60):
     if len(msgs) <= keep:
         return
@@ -1067,6 +1119,12 @@ def human_err(e):
         return "模型接口返回 402：账户余额不足。充值后再试。", False
     if "http 429" in low:
         return "模型接口返回 429：请求太频繁，等十几秒再试。", True
+    if "tool_call" in low and ("invalid_request" in low or "http 400" in low):
+        return ("模型接口拒收：工具调用记录对不上（说好要调 N 个工具，实际只回了几个结果），"
+                "所以整段被退回。\n"
+                "这条已经自动补过一轮还不行，说明本次会话的历史里有坏记录。\n"
+                "两个办法，都不用重装：① 右上「＋」新开会话，把问题重发一遍；"
+                "② 直接再发一次「继续」，触发重新修一遍历史。"), False
     if any(h in low for h in ("http 500", "http 502", "http 503", "http 504")):
         return "模型服务端出错（5xx），通常几分钟内自己恢复，可以重试。", True
     if "timed out" in low or "timeout" in low:
@@ -1086,6 +1144,16 @@ def stream_retry(msgs, model, stop_ev, tries=3):
             return
         except RuntimeError as e:
             last = e
+            msg = str(e).lower()
+            # 400 且是 tool 配对问题：就地再修一遍序列重试。上下文是多轮攒出来的，
+            # 修一次通常就过；已经吐过字就不能重试，否则前端会看到重复内容。
+            if (not got and "tool_call" in msg
+                    and ("invalid_request" in msg or "http 400" in msg)):
+                fixed = fix_tool_seq(msgs)
+                if fixed != msgs:
+                    msgs[:] = fixed
+                    continue
+                raise
             if got or stop_ev.is_set() or not is_net_err(str(e)):
                 raise
             time.sleep(1.2 * (i + 1))
@@ -1209,6 +1277,7 @@ def run_agent(sid, user_text, bus, stop_ev):
                       reasoning=think_acc or None, tool_calls=tcs)
         think_acc = ""
 
+        done = 0
         for tc in tcs:
             if stop_ev.is_set():
                 break
@@ -1223,6 +1292,7 @@ def run_agent(sid, user_text, bus, stop_ev):
             ms = int((time.time() - t0) * 1000)
             ok = not (out.startswith("ERROR:") or out.startswith("[退出码"))
             steps += 1
+            done += 1
             emit({"t": "tool_end", "id": tc["id"], "out": out[:3500], "ms": ms, "ok": ok})
             msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": out})
             fail_streak = 0 if ok else fail_streak + 1
@@ -1236,6 +1306,18 @@ def run_agent(sid, user_text, bus, stop_ev):
                       "v": "连续 %d 次工具执行失败，已自动停止。最后一个报错见上。" % fail_streak})
                 halted = True
                 break
+
+        if done < len(tcs):
+            # 一批并行调用只跑了一部分（点停止 / 熔断）。缺的必须补成 tool 消息，
+            # 否则 assistant 带的 tool_calls 和后头的 tool 数量对不上，下一句必 400。
+            why = "用户中断" if stop_ev.is_set() else "前面连续失败，已自动停止"
+            for tc in tcs[done:]:
+                note = "（%s，这一步没有执行）" % why
+                msgs.append({"role": "tool", "tool_call_id": tc["id"], "content": note})
+                if STORE:
+                    STORE.add(sid, "tool", content=note, tool_call_id=tc["id"],
+                              name=(tc.get("function") or {}).get("name"),
+                              meta={"ms": 0, "ok": False})
 
         if halted:
             break
@@ -1304,7 +1386,7 @@ MIME = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "webchat/2.3"
+    server_version = "webchat/2.4"
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
@@ -1454,7 +1536,7 @@ class Handler(BaseHTTPRequestHandler):
                             "work": WORK, "db": DB_PATH if USE_DB else None,
                             "db_size": STORE.size() if STORE else 0,
                             "max_turns": MAX_TURNS, "ctx_limit": CTX_LIMIT,
-                            "ctx_keep": CTX_KEEP, "auth": bool(TOKEN), "version": "2.3",
+                            "ctx_keep": CTX_KEEP, "auth": bool(TOKEN), "version": "2.4",
                             "platform": os_name(), "android": IS_ANDROID,
                             "cmd_timeout": CMD_TIMEOUT,
                             "tools": [t["function"]["name"] for t in TOOL_SET]})
