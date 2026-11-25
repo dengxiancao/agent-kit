@@ -39,6 +39,14 @@
     return String(n);
   }
 
+  // 按 DeepSeek 官方空闲价粗算（元/百万 token）：flash 1 / 4，pro 4.5 / 13.5
+  function cost(st) {
+    var pro = (st.model || S.model || '').indexOf('pro') >= 0;
+    var pin = pro ? 4.5 : 1, pout = pro ? 13.5 : 4;
+    var y = (st.tokens_in || 0) / 1e6 * pin + (st.tokens_out || 0) / 1e6 * pout;
+    return y < 0.001 ? '0.000' : y.toFixed(3);
+  }
+
   function limTxt(n) {
     if (!n) return '0';
     return n >= 1000 ? ((n / 1000).toFixed(n % 1000 ? 1 : 0) + 'k') : String(n);
@@ -716,7 +724,8 @@
       (S.running ? '<span class="r" style="color:var(--brand)">运行中</span>' : '') + '</div>' +
       '<div class="kv"><span>输入</span><b>' + num(st.tokens_in) + '</b></div>' +
       '<div class="kv"><span>输出</span><b>' + num(st.tokens_out) + '</b></div>' +
-      '<div class="kv"><span>估算费用</span><b>¥' + (st.tokens_in / 1e6 * 1 + st.tokens_out / 1e6 * 2).toFixed(3) + '</b></div>' +
+      '<div class="kv"><span>估算费用</span><b>¥' + cost(st) + '</b></div>' +
+      '<div class="tip">按空闲价粗算；高峰（工作日 9-12、14-18 点）翻倍</div>' +
       '</div>';
 
     if (st.tools && st.tools.length) {
