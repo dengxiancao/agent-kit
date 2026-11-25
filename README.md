@@ -81,6 +81,16 @@ python3 webchat.py --port 8080
 | **网络容错** | 接口抖动（DNS 失败、连接重置、5xx、429）自动重试 2 次；真失败时给一句能照做的中文提示，并在消息流里留一个「重试这一轮」按钮（v2.2） |
 | **访问口令** | `--host 0.0.0.0` 时自动生成，存在 `~/.config/webchat/token`。本机浏览器不用口令；局域网设备第一次要打开启动时打印的 `?k=` 地址，之后靠 cookie 记住。`--no-auth` 可关 |
 
+### v2.5：模型名跟上 DeepSeek V4，思考内容回传
+
+DeepSeek 在 2026-07-24 下线了 `deepseek-chat` / `deepseek-reasoner`，默认模型改成 **`deepseek-flash`**（V4.1-Flash-1017），下拉里另一个是 **`deepseek-v4-pro`**（V4-Pro-0813，难任务用）。老配置里的旧名会自动映射，不会 404。
+
+V4 默认开思考模式，带工具调用时官方要求把 `reasoning_content` 原样回传，否则下一请求 400 —— v2.5 起会存库并回传。
+
+### v2.4：修掉 `HTTP 400 insufficient tool messages`
+
+模型一次并行调 3 个工具时，如果中途点停止或触发熔断，旧代码只把已执行的结果写进历史，缺的那几条没补。下一条消息把这段发出去，DeepSeek 直接整段退回（400），而且那个「每会话只修一次」的缓存让它永远修不好。现在：中断当场补占位、组装上下文时线性校验、撞到 400 自动修一次重试。
+
 ### v2.3：同一份代码，按运行环境自动切换
 
 之前提示词和工具集是**写死给手机 Termux 的**，搬到 Ubuntu 后模型一直以为自己在手机上，还会去调 `adui.py`、`ui.py` 这些服务器上没有的脚本，把步数耗在无效重试上。v2.3 起按环境自动分支：
@@ -103,14 +113,16 @@ AGENT_CMD_TIMEOUT=300 python3 webchat.py
 
 ```bash
 # 想加自己的模型（逗号分隔）
-WEBCHAT_MODELS="deepseek-chat,deepseek-reasoner" python3 webchat.py
+WEBCHAT_MODELS="deepseek-flash,deepseek-v4-pro" python3 webchat.py
 
 # 压缩阈值调小一点，长会话更省 token
 AGENT_CTX_LIMIT=24000 AGENT_CTX_KEEP=8 python3 webchat.py
 ```
 
-> `deepseek-reasoner` 对 function calling 的支持随版本变化，纯问答没问题；要它跑工具（看屏幕、改文件）
-> 建议留在 `deepseek-chat`，否则可能收到「模型不支持 tools」的报错。
+> **模型名在 2026-07-24 换过一轮**：`deepseek-chat` / `deepseek-reasoner` 已下线，
+> 现在是 `deepseek-flash`（DeepSeek-V4.1-Flash-1017，便宜、默认带思考）和
+> `deepseek-v4-pro`（DeepSeek-V4-Pro-0813，难任务用，贵 3 倍多）。两个都支持工具调用。
+> 老环境变量里如果还写着旧名，程序会自动映射到 `deepseek-flash`，不会报 404。
 
 > **单条消息最多跑 100 步**（模型 → 工具 → 模型 算一步）。到上限会明确提示，回一句「继续」接着跑；
 > 想调大用环境变量 `AGENT_MAX_TURNS=300 python3 webchat.py`，不用改代码。
