@@ -445,3 +445,6 @@ html[data-theme="dark"] .notice{border-color:rgba(224,187,99,.30);
   background:rgba(224,187,99,.10);color:#e0bb63}
 html[data-theme="light"] .notice{border-color:rgba(214,158,46,.35);
   background:rgba(214,158,46,.10);color:#b7791f}
+
+/* 右栏卡片下的小字注释（费用估算口径之类） */
+.tip{margin-top:6px;color:var(--muted);font-size:11px;line-height:1.45}
