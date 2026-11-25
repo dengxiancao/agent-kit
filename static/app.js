@@ -981,7 +981,7 @@
   }
 
   function pickModel(anchor) {
-    var list = (S.models && S.models.length) ? S.models : [S.model || 'deepseek-chat'];
+    var list = (S.models && S.models.length) ? S.models : [S.model || 'deepseek-flash'];
     popEl.innerHTML = list.map(function (m) {
       return '<button data-m="' + esc(m) + '"><span>' + esc(m) + '</span>' +
         (m === S.model ? '<span class="cur">✓</span>' : '') + '</button>';
@@ -1287,7 +1287,7 @@
       S.health = await api('/api/health');
       S.models = S.health.models || [];
       S.ctxLimit = S.health.ctx_limit || 48000;
-      setModel(S.health.model || 'deepseek-chat');
+      setModel(S.health.model || 'deepseek-flash');
       $('#ver').textContent = 'v' + (S.health.version || '2');
       $('#footinfo').textContent = S.health.mock ? 'MOCK 演示模式' : (S.health.work || 'local');
       $('#lbl-work').textContent = (S.health.work || '').replace(/^.*\//, '~/…/');
