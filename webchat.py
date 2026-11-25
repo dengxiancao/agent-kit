@@ -104,7 +104,22 @@ def os_name():
 
 API_KEY = os.environ.get("DEEPSEEK_KEY", "")
 API_URL = os.environ.get("DEEPSEEK_URL", "https://api.deepseek.com/chat/completions")
-MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+IS_DEEPSEEK = "deepseek" in API_URL
+# 官方 2026-07-24 下线了 deepseek-chat / deepseek-reasoner，现在是 V4 系列。
+MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-flash")
+# 老配置（env 里还写着旧名）不让它直接 404，请求时映射到现在的对应型号。
+MODEL_ALIAS = {
+    "deepseek-chat": "deepseek-flash",
+    "deepseek-reasoner": "deepseek-flash",     # V4 默认就开思考，行为最接近
+    "deepseek-v4-flash": "deepseek-flash",
+    "deepseek-v4-flash-vision-exp": "deepseek-flash",
+}
+def real_model(m=None):
+    """把历史里存的旧模型名映射成现在还能调的型号。"""
+    m = m or MODEL
+    return MODEL_ALIAS.get(m, m)
+
+
 # 单条消息内最多几轮「模型 → 工具 → 模型」。12 太小：稍微复杂的任务（看屏幕、改文件、
 # 跑命令、验证）十几步就顶到天花板，停下来又不说，看起来就是"卡死"。
 MAX_TURNS = int(os.environ.get("AGENT_MAX_TURNS", "100"))
@@ -114,7 +129,7 @@ DB_PATH = os.path.expanduser(os.environ.get("WEBCHAT_DB", "~/.local/share/webcha
 
 # 可选模型。前端顶部 chip 点一下就能换，存在会话上，下轮生效。
 MODELS = [m.strip() for m in os.environ.get(
-    "WEBCHAT_MODELS", "deepseek-chat,deepseek-reasoner").split(",") if m.strip()]
+    "WEBCHAT_MODELS", "deepseek-flash,deepseek-v4-pro").split(",") if m.strip()]
 if MODEL not in MODELS:
     MODELS.insert(0, MODEL)
 
@@ -419,6 +434,8 @@ class Store:
                 m = {"role": "assistant", "content": r["content"] or None}
                 if r["tool_calls"]:
                     m["tool_calls"] = json.loads(r["tool_calls"])
+                if IS_DEEPSEEK and r["reasoning"] and m.get("tool_calls"):
+                    m["reasoning_content"] = r["reasoning"]
                 if m["content"] or m.get("tool_calls"):
                     out.append(m)
             elif role == "tool":
@@ -651,7 +668,7 @@ class Store:
             "tools": [{"name": t["name"], "meta": json.loads(t["meta"]) if t["meta"] else {}}
                       for t in tools][-8:],
             "work": s["work"] if s else WORK,
-            "model": s["model"] if s else MODEL,
+            "model": real_model(s["model"] if s else None),
         }
 
     def size(self):
@@ -961,7 +978,8 @@ SYSTEM = build_system(WORK)
 # ------------------------------------------------------------------ 模型调用
 
 def stream_chat(msgs, model=None):
-    body = json.dumps({"model": model or MODEL, "messages": msgs, "tools": TOOL_SET,
+    body = json.dumps({"model": real_model(model),
+                       "messages": msgs, "tools": TOOL_SET,
                        "tool_choice": "auto", "stream": True,
                        "stream_options": {"include_usage": True},
                        "temperature": 0.3}, ensure_ascii=False).encode("utf-8")
@@ -1166,7 +1184,7 @@ def run_agent(sid, user_text, bus, stop_ev):
     """跑一轮：把每条消息写库，把每个事件发到 bus。客户端断开也不影响它跑完。"""
     emit = bus.pub
     sess = STORE.get(sid) if STORE else None
-    model = (sess or {}).get("model") or MODEL
+    model = real_model((sess or {}).get("model"))
     msgs = STORE.context(sid) if STORE else [{"role": "system", "content": SYSTEM}]
     emit({"t": "user", "v": user_text})
     emit({"t": "model", "v": model})
@@ -1271,7 +1289,12 @@ def run_agent(sid, user_text, bus, stop_ev):
             c = calls[i]
             tcs.append({"id": c["id"] or ("call_%d_%d" % (turn, i)), "type": "function",
                         "function": {"name": c["name"], "arguments": c["args"] or "{}"}})
-        msgs.append({"role": "assistant", "content": text_acc or None, "tool_calls": tcs})
+        am = {"role": "assistant", "content": text_acc or None, "tool_calls": tcs}
+        if IS_DEEPSEEK and think_acc:
+            # DeepSeek V4 默认开思考：带工具的一轮，思考内容必须原样回传，
+            # 否则下一请求 400。没有工具时这个字段会被忽略，可以不带。
+            am["reasoning_content"] = think_acc
+        msgs.append(am)
         if STORE:
             STORE.add(sid, "assistant", content=text_acc or None,
                       reasoning=think_acc or None, tool_calls=tcs)
@@ -1386,7 +1409,7 @@ MIME = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "webchat/2.4"
+    server_version = "webchat/2.5"
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
@@ -1532,17 +1555,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.js({"sessions": STORE.list(qq or None)})
 
         if p == "/api/health":
-            return self.js({"ok": True, "model": MODEL, "models": MODELS, "mock": MOCK,
+            return self.js({"ok": True, "model": real_model(), "models": MODELS, "mock": MOCK,
                             "work": WORK, "db": DB_PATH if USE_DB else None,
                             "db_size": STORE.size() if STORE else 0,
                             "max_turns": MAX_TURNS, "ctx_limit": CTX_LIMIT,
-                            "ctx_keep": CTX_KEEP, "auth": bool(TOKEN), "version": "2.4",
+                            "ctx_keep": CTX_KEEP, "auth": bool(TOKEN), "version": "2.5",
                             "platform": os_name(), "android": IS_ANDROID,
                             "cmd_timeout": CMD_TIMEOUT,
                             "tools": [t["function"]["name"] for t in TOOL_SET]})
 
         if p == "/api/models":
-            return self.js({"models": MODELS, "default": MODEL})
+            return self.js({"models": MODELS, "default": real_model()})
 
         if p == "/api/overview":
             if not STORE:
