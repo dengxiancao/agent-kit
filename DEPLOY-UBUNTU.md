@@ -330,7 +330,7 @@ sudo sed -i '1s/^\xEF\xBB\xBF//; s/\r$//' /home/agent/.config/webchat/env
 sudo tee /home/agent/.config/webchat/env >/dev/null <<'EOF'
 DEEPSEEK_KEY=sk-你的key
 DEEPSEEK_URL=https://api.deepseek.com/chat/completions
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MODEL=deepseek-flash
 AGENT_WORK=/home/agent/work
 HOST=127.0.0.1
 PORT=8765
